@@ -5,7 +5,7 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
 st.set_page_config(page_title="個人股價監控", layout="wide")
-st.title("JStok 📊 MA20+60 與財報監控")
+st.title("📊 個人股價與財報監控")
 
 my_stocks = {"2330.TW": "台積電", "2454.TW": "聯發科", "2308.TW": "台達電", "2317.TW": "鴻海", "3711.TW": "日月光","2303.TW": "聯電", "2327.TW": "國巨", "2383.TW": "台光電", "2345.TW":"智邦","3037.TW": "欣興"}
 
