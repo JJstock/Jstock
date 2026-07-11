@@ -5,7 +5,7 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
 st.set_page_config(page_title="個人股價監控", layout="wide")
-st.title("📊 個人股票 MA20 與財報監控")
+st.title("JStok 📊 MA20+60 與財報監控")
 
 my_stocks = {"2330.TW": "台積電", "2454.TW": "聯發科", "2308.TW": "台達電", "2317.TW": "鴻海", "3711.TW": "日月光","2303.TW": "聯電", "2327.TW": "國巨", "2383.TW": "台光電", "2345.TW":"智邦","3037.TW": "欣興"}
 
@@ -91,6 +91,9 @@ if selected_ticker:
     fig.add_trace(go.Bar(x=df.index, y=df['Volume'], marker_color=colors, name='成交量'), row=2, col=1)
 
     # 4. 版面設定
-    fig.update_layout(xaxis_rangeslider_visible=False, height=600, showlegend=False)
-    
-    st.plotly_chart(fig, use_container_width=True)
+    fig.update_layout(
+        xaxis_rangeslider_visible=False, 
+        height=600, 
+        showlegend=False,
+        xaxis_type="category"  # 這行是關鍵：跳過沒有交易的日期
+    )
