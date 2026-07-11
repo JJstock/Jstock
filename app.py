@@ -60,14 +60,28 @@ st.divider()
 st.subheader("📈 個股趨勢圖 (MA20 vs MA60)")
 selected_ticker = st.selectbox("請選擇股票查看趨勢", list(my_stocks.keys()), format_func=lambda x: my_stocks[x])
 
+import altair as alt
+
 if selected_ticker:
     stock = yf.Ticker(selected_ticker)
-    # 要計算 MA60，至少需要 60 天以上的數據
-    df = stock.history(period="6mo") 
+    df = stock.history(period="6mo")
     
-    # 計算指標
+    # 計算均線
     df['MA20'] = df['Close'].rolling(window=20).mean()
-    df['MA60'] = df['Close'].rolling(window=60).mean() # 新增這行
+    df['MA60'] = df['Close'].rolling(window=60).mean()
     
-    # 畫圖：同時繪製 Close, MA20, MA60
-    st.line_chart(df[['Close', 'MA20', 'MA60']].tail(90)) # 顯示近 90 天
+    # 準備繪圖資料：將資料轉為長格式 (Long format)
+    df_melt = df[['Close', 'MA20', 'MA60']].tail(90).reset_index()
+    df_melt = df_melt.melt('Date', var_name='Type', value_name='Price')
+    
+    # 繪製圖表
+    chart = alt.Chart(df_melt).mark_line().encode(
+        x='Date:T',
+        y='Price:Q',
+        color=alt.Color('Type', scale=alt.Scale(
+            domain=['Close', 'MA20', 'MA60'],
+            range=['#333333', 'red', 'blue'] # 自訂顏色：股價黑、MA20紅、MA60藍
+        ))
+    ).properties(width=700, height=400)
+    
+    st.altair_chart(chart, use_container_width=True)
