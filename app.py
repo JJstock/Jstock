@@ -1,6 +1,8 @@
 import streamlit as st
 import yfinance as yf
 import pandas as pd
+import plotly.graph_objects as go
+from plotly.subplots import make_subplots
 
 st.set_page_config(page_title="個人股價監控", layout="wide")
 st.title("📊 個人股票 MA20 與財報監控")
@@ -60,8 +62,7 @@ st.divider()
 st.subheader("📈 個股趨勢圖 (MA20 vs MA60)")
 selected_ticker = st.selectbox("請選擇股票查看趨勢", list(my_stocks.keys()), format_func=lambda x: my_stocks[x])
 
-import plotly.graph_objects as go
-from plotly.subplots import make_subplots
+
 
 if selected_ticker:
     stock = yf.Ticker(selected_ticker)
