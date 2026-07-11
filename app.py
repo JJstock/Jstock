@@ -62,7 +62,7 @@ selected_ticker = st.selectbox("請選擇股票查看趨勢", list(my_stocks.key
 
 if selected_ticker:
     # 1. 抓取更長的歷史資料 (至少 3 個月)
-    df = stock.history(period="3mo") 
+    df = stock.history(period="6mo") 
     
     # 2. 計算 MA20
     df['MA20'] = df['Close'].rolling(window=20).mean()
