@@ -68,48 +68,43 @@ if selected_ticker:
     df = stock.history(period="3mo")
     
     if not df.empty:
-        # 強制處理數據：將缺失的成交量補 0，並轉為字串日期以確保對齊
+        # 1. 數據前處理：補足缺失值
         df['Volume'] = df['Volume'].fillna(0)
         df['Date_Str'] = df.index.strftime('%Y-%m-%d')
-        
         df['MA20'] = df['Close'].rolling(window=20).mean()
         df['MA60'] = df['Close'].rolling(window=60).mean()
         
-        # 建立雙子圖
+        # 2. 定義統一的漲跌顏色 (紅漲、綠跌、平盤灰)
+        # 這裡的顏色代碼與蠟燭圖預設邏輯一致
+        def get_color(row):
+            if row['Close'] > row['Open']: return '#EF553B' # 紅色
+            if row['Close'] < row['Open']: return '#00CC96' # 綠色
+            return '#7F7F7F' # 灰色 (平盤)
+
+        volume_colors = [get_color(row) for _, row in df.iterrows()]
+        
+        # 3. 建立雙子圖
         fig = make_subplots(rows=2, cols=1, shared_xaxes=True, 
                             vertical_spacing=0.03, row_heights=[0.7, 0.3])
         
-        # 1. 蠟燭圖 (x 使用日期字串)
+        # 4. 繪製蠟燭圖 (上方)
         fig.add_trace(go.Candlestick(x=df['Date_Str'], open=df['Open'], high=df['High'], 
                                      low=df['Low'], close=df['Close'], name='股價'), row=1, col=1)
         
-        # 2. 均線
+        # 5. 繪製均線
         fig.add_trace(go.Scatter(x=df['Date_Str'], y=df['MA20'], name='MA20', line=dict(color='red', width=1.5)), row=1, col=1)
         fig.add_trace(go.Scatter(x=df['Date_Str'], y=df['MA60'], name='MA60', line=dict(color='blue', width=1.5)), row=1, col=1)
         
-        # 3. 成交量
-        # 將原本的顏色邏輯修改為更嚴謹的判斷
-        # 若當日收盤價 > 當日開盤價，則為紅色(漲)；否則皆為綠色(跌)
-        colors = []
-        for index, row in df.iterrows():
-            if row['Close'] > row['Open']:
-                colors.append('#EF553B') # 紅色：漲
-            elif row['Close'] < row['Open']:
-                colors.append('#00CC96') # 綠色：跌
-            else:
-                # 若平盤，依據「昨日收盤價」判定，若無昨日則預設為灰色
-                colors.append('#A9A9A9') 
+        # 6. 繪製成交量 (下方)，並套用統一顏色邏輯
+        fig.add_trace(go.Bar(x=df['Date_Str'], y=df['Volume'], name='成交量', marker_color=volume_colors), row=2, col=1)
         
-        # 加入成交量長條圖
-        fig.add_trace(go.Bar(x=df['Date_Str'], y=df['Volume'], name='成交量', marker_color=colors), row=2, col=1)
-        
-        # 4. 強制對齊：將兩張圖的 X 軸都設為 category，並關閉多餘的軸線
+        # 7. 版面設定 (強制對齊與隱藏多餘細節)
         fig.update_layout(
-            height=600, 
-            showlegend=False, 
-            xaxis_rangeslider_visible=False,
-            xaxis=dict(type='category', showticklabels=False), # 上方圖不需要顯示日期刻度
-            xaxis2=dict(type='category', tickangle=45)        # 僅下方圖顯示日期刻度，確保對齊
+            height=600, showlegend=False, xaxis_rangeslider_visible=False,
+            xaxis=dict(type='category', showticklabels=False),
+            xaxis2=dict(type='category', tickangle=45)
         )
         
         st.plotly_chart(fig, width='stretch')
+    else:
+        st.warning("目前無該個股歷史成交數據。")
