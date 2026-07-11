@@ -74,12 +74,19 @@ if selected_ticker:
         df['MA20'] = df['Close'].rolling(window=20).mean()
         df['MA60'] = df['Close'].rolling(window=60).mean()
         
-        # 2. 定義統一的漲跌顏色 (紅漲、綠跌、平盤灰)
-        # 這裡的顏色代碼與蠟燭圖預設邏輯一致
-        def get_color(row):
-            if row['Close'] > row['Open']: return '#EF553B' # 紅色
-            if row['Close'] < row['Open']: return '#00CC96' # 綠色
-            return '#7F7F7F' # 灰色 (平盤)
+        # 2. 定義顏色邏輯：與前一日收盤價比較
+        # 先計算前一日的收盤價 (shift(1) 代表將數值下移一格)
+        df['Prev_Close'] = df['Close'].shift(1)
+        
+        def get_volume_color(row):
+            # 如果沒有前一日資料（第一筆），預設給灰色
+            if pd.isna(row['Prev_Close']): return '#7F7F7F'
+            # 比較當日收盤與前一日收盤
+            if row['Close'] > row['Prev_Close']: return '#EF553B' # 紅色
+            if row['Close'] < row['Prev_Close']: return '#00CC96' # 綠色
+            return '#7F7F7F' # 平盤灰色
+
+        volume_colors = [get_volume_color(row) for _, row in df.iterrows()]
 
         volume_colors = [get_color(row) for _, row in df.iterrows()]
         
