@@ -55,18 +55,22 @@ st.dataframe(
     .format("{:.2f}", subset=["現價", "MA20"])
 )
 
-# --- 2. 個別趨勢圖 ---
+# --- 2. 個別趨勢圖 (修正版) ---
 st.divider()
 st.subheader("📈 個股趨勢圖")
 selected_ticker = st.selectbox("請選擇股票查看趨勢", list(my_stocks.keys()), format_func=lambda x: my_stocks[x])
 
 if selected_ticker:
-    # 1. 抓取更長的歷史資料 (至少 3 個月)
-    df = stock.history(period="6mo") 
+    # 這裡必須重新建立一個 stock 物件，或者從函數取得
+    stock = yf.Ticker(selected_ticker) 
+    df = stock.history(period="6mo")
     
-    # 2. 計算 MA20
+    # 計算 MA20
     df['MA20'] = df['Close'].rolling(window=20).mean()
+    
+    # 畫圖：只取最近 60 天的資料，避免圖表太擠
+    st.line_chart(df[['Close', 'MA20']].tail(60))
     
     # 3. 繪圖：顯示最近一個月的數據即可，但計算需基於較長的歷史
     # 這樣均線就會是完整的
-    st.line_chart(df[['Close', 'MA20']].tail(30))
+    st.line_chart(df[['Close', 'MA60']].tail(60))
