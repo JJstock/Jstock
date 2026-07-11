@@ -27,8 +27,8 @@ def get_stock_data(ticker):
         "MA20": ma20,
         "狀態": "低於" if price < ma20 else "高於",
         # 合併顯示
-        "Trailing (PE/EPS)": f"{t_pe:.2f} / {t_eps:.2f}",
-        "Forward (PE/EPS)": f"{f_pe:.2f} / {f_eps:.2f}"
+        "Trailing (PE/EPS)": f"{t_pe:.2f} (EPS: {t_eps:.2f})",
+        "Forward (PE/EPS)": f"{f_pe:.2f} (EPS: {f_eps:.2f})"
     }, df
 
 # --- 1. 顯示總覽表格 ---
