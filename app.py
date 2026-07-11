@@ -58,24 +58,36 @@ if selected_ticker:
     df = stock.history(period="3mo")
     
     if not df.empty:
+        # 強制處理數據：將缺失的成交量補 0，並轉為字串日期以確保對齊
+        df['Volume'] = df['Volume'].fillna(0)
+        df['Date_Str'] = df.index.strftime('%Y-%m-%d')
+        
         df['MA20'] = df['Close'].rolling(window=20).mean()
         df['MA60'] = df['Close'].rolling(window=60).mean()
         
-        # 決定成交量顏色：漲(紅)跌(綠)
-        colors = ['#EF553B' if row['Close'] >= row['Open'] else '#00CC96' for index, row in df.iterrows()]
-        
+        # 建立雙子圖
         fig = make_subplots(rows=2, cols=1, shared_xaxes=True, 
                             vertical_spacing=0.03, row_heights=[0.7, 0.3])
         
-        # 蠟燭圖
-        fig.add_trace(go.Candlestick(x=df.index, open=df['Open'], high=df['High'], 
+        # 1. 蠟燭圖 (x 使用日期字串)
+        fig.add_trace(go.Candlestick(x=df['Date_Str'], open=df['Open'], high=df['High'], 
                                      low=df['Low'], close=df['Close'], name='股價'), row=1, col=1)
-        # 均線
-        fig.add_trace(go.Scatter(x=df.index, y=df['MA20'], name='MA20', line=dict(color='red', width=1.5)), row=1, col=1)
-        fig.add_trace(go.Scatter(x=df.index, y=df['MA60'], name='MA60', line=dict(color='blue', width=1.5)), row=1, col=1)
-        # 成交量
-        fig.add_trace(go.Bar(x=df.index, y=df['Volume'], name='成交量', marker_color=colors), row=2, col=1)
         
-        # 關鍵設定：xaxis_type="category" 跳過非交易日
-        fig.update_layout(height=600, showlegend=False, xaxis_rangeslider_visible=False, xaxis_type="category")
+        # 2. 均線
+        fig.add_trace(go.Scatter(x=df['Date_Str'], y=df['MA20'], name='MA20', line=dict(color='red', width=1.5)), row=1, col=1)
+        fig.add_trace(go.Scatter(x=df['Date_Str'], y=df['MA60'], name='MA60', line=dict(color='blue', width=1.5)), row=1, col=1)
+        
+        # 3. 成交量
+        colors = ['#EF553B' if row['Close'] >= row['Open'] else '#00CC96' for index, row in df.iterrows()]
+        fig.add_trace(go.Bar(x=df['Date_Str'], y=df['Volume'], name='成交量', marker_color=colors), row=2, col=1)
+        
+        # 4. 強制對齊：將兩張圖的 X 軸都設為 category，並關閉多餘的軸線
+        fig.update_layout(
+            height=600, 
+            showlegend=False, 
+            xaxis_rangeslider_visible=False,
+            xaxis=dict(type='category', showticklabels=False), # 上方圖不需要顯示日期刻度
+            xaxis2=dict(type='category', tickangle=45)        # 僅下方圖顯示日期刻度，確保對齊
+        )
+        
         st.plotly_chart(fig, width='stretch')
