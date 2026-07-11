@@ -44,12 +44,16 @@ for symbol, name in my_stocks.items():
 
 df_view = pd.DataFrame(data_list).set_index('名稱')
 
-# 透過 styler 將「高於」設為綠色，「低於」設為紅色
 def color_status(val):
     color = 'red' if val == '低於' else 'green'
     return f'color: {color}'
 
-st.dataframe(df_view.style.map(color_status, subset=['狀態']).format("{:.2f}", subset=["現價", "MA20", "Trailing PE", "Trailing EPS", "Forward PE", "Forward EPS"]))
+# 只對數值欄位進行 format，合併後的文字欄位交給原始字串內容
+st.dataframe(
+    df_view.style
+    .map(color_status, subset=['狀態'])
+    .format("{:.2f}", subset=["現價", "MA20"])
+)
 
 # --- 2. 個別趨勢圖 ---
 st.divider()
