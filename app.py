@@ -8,7 +8,7 @@ st.title("📊 個人股票 MA20 與財報監控")
 my_stocks = {"2330.TW": "台積電", "2454.TW": "聯發科", "2308.TW": "台達電", "2317.TW": "鴻海", "3711.TW": "日月光","2303.TW": "聯電", "2327.TW": "國巨", "2383.TW": "台光電", "2345.TW":"智邦","3037.TW": "欣興"}
 
 @st.cache_data(ttl=3600)
-def get_stock_data(ticker):
+ def get_stock_data(ticker):
     stock = yf.Ticker(ticker)
     info = stock.info
     df = stock.history(period="1mo")
@@ -16,15 +16,19 @@ def get_stock_data(ticker):
     ma20 = df['Close'].rolling(window=20).mean().iloc[-1]
     price = df['Close'].iloc[-1]
     
-    # 修正欄位名稱：yfinance 的 info 欄位通常是 trailingEps (注意大小寫)
+    # 取得原始值
+    t_pe = info.get('trailingPE', 0)
+    t_eps = info.get('trailingEps', 0)
+    f_pe = info.get('forwardPE', 0)
+    f_eps = info.get('forwardEps', 0)
+    
     return {
         "現價": price,
         "MA20": ma20,
         "狀態": "低於" if price < ma20 else "高於",
-        "Trailing PE": info.get('trailingPE', 0),
-        "Trailing EPS": info.get('trailingEps', 0),
-        "Forward PE": info.get('forwardPE', 0),
-        "Forward EPS": info.get('forwardEps', 0)
+        # 合併顯示
+        "Trailing (PE/EPS)": f"{t_pe:.2f} / {t_eps:.2f}",
+        "Forward (PE/EPS)": f"{f_pe:.2f} / {f_eps:.2f}"
     }, df
 
 # --- 1. 顯示總覽表格 ---
