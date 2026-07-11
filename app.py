@@ -68,52 +68,43 @@ if selected_ticker:
     df = stock.history(period="3mo")
     
     if not df.empty:
-        # 1. 數據前處理：補足缺失值
+        # 1. 數據前處理
         df['Volume'] = df['Volume'].fillna(0)
         df['Date_Str'] = df.index.strftime('%Y-%m-%d')
         df['MA20'] = df['Close'].rolling(window=20).mean()
         df['MA60'] = df['Close'].rolling(window=60).mean()
         
-        # 2. 定義顏色邏輯：與前一日收盤價比較
-        # 先計算前一日的收盤價 (shift(1) 代表將數值下移一格)
-        df['Prev_Close'] = df['Close'].shift(1)
-        
-        def get_volume_color(row):
-            # 如果沒有前一日資料（第一筆），預設給灰色
-            if pd.isna(row['Prev_Close']): return '#7F7F7F'
-            # 比較當日收盤與前一日收盤
-            if row['Close'] > row['Prev_Close']: return '#EF553B' # 紅色
-            if row['Close'] < row['Prev_Close']: return '#00CC96' # 綠色
-            return '#7F7F7F' # 平盤灰色
-
-        volume_colors = [get_volume_color(row) for _, row in df.iterrows()]
-
-        volume_colors = [get_color(row) for _, row in df.iterrows()]
+        # 2. 精確的量價動能顏色邏輯 (Vectorized 向量運算)
+        import numpy as np
+        # 比較當日收盤與前一日收盤
+        prev_close = df['Close'].shift(1)
+        conditions = [
+            (df['Close'] > prev_close), # 紅色：今日比昨日高
+            (df['Close'] < prev_close)  # 綠色：今日比昨日低
+        ]
+        choices = ['#EF553B', '#00CC96']
+        # 產生顏色序列，預設灰色
+        volume_colors = np.select(conditions, choices, default='#7F7F7F').tolist()
         
         # 3. 建立雙子圖
         fig = make_subplots(rows=2, cols=1, shared_xaxes=True, 
                             vertical_spacing=0.03, row_heights=[0.7, 0.3])
         
-        # 4. 繪製蠟燭圖 (上方)
+        # 4. 繪製蠟燭圖 (漲紅跌綠)
         fig.add_trace(go.Candlestick(
-            x=df['Date_Str'], 
-            open=df['Open'], 
-            high=df['High'], 
-            low=df['Low'], 
-            close=df['Close'], 
-            name='股價',
-            increasing_line_color='#EF553B',  # 紅色：漲
-            decreasing_line_color='#00CC96'   # 綠色：跌
+            x=df['Date_Str'], open=df['Open'], high=df['High'], 
+            low=df['Low'], close=df['Close'], name='股價',
+            increasing_line_color='#EF553B', decreasing_line_color='#00CC96'
         ), row=1, col=1)
         
         # 5. 繪製均線
         fig.add_trace(go.Scatter(x=df['Date_Str'], y=df['MA20'], name='MA20', line=dict(color='red', width=1.5)), row=1, col=1)
         fig.add_trace(go.Scatter(x=df['Date_Str'], y=df['MA60'], name='MA60', line=dict(color='blue', width=1.5)), row=1, col=1)
         
-        # 6. 繪製成交量 (下方)，並套用統一顏色邏輯
+        # 6. 繪製成交量
         fig.add_trace(go.Bar(x=df['Date_Str'], y=df['Volume'], name='成交量', marker_color=volume_colors), row=2, col=1)
         
-        # 7. 版面設定 (強制對齊與隱藏多餘細節)
+        # 7. 版面設定
         fig.update_layout(
             height=600, showlegend=False, xaxis_rangeslider_visible=False,
             xaxis=dict(type='category', showticklabels=False),
