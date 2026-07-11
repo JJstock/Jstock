@@ -19,20 +19,30 @@ my_stocks = {
 def get_stock_data(ticker):
     gc.collect()
     stock = yf.Ticker(ticker)
-    try: info = stock.info
-    except: info = {}
+    try:
+        info = stock.info
+    except:
+        info = {}
     
     df = stock.history(period="6mo")
-    if df.empty: return None, None
+    if df.empty:
+        return None, None
         
     ma20 = df['Close'].rolling(window=20).mean().iloc[-1]
     price = df['Close'].iloc[-1]
-    t_pe = info.get('trailingPE', 0)
-    t_eps = info.get('trailingEps', 0)
+    
+    # 確保資料存在，若為 None 則給予 0
+    t_pe = info.get('trailingPE') or 0
+    t_eps = info.get('trailingEps') or 0
+    f_pe = info.get('forwardPE') or 0
+    f_eps = info.get('forwardEps') or 0
     
     return {
-        "現價": price, "MA20": ma20, "狀態": "低於" if price < ma20 else "高於",
-        "Trailing (PE/EPS)": f"{t_pe:.2f} (EPS: {t_eps:.2f})"
+        "現價": price, 
+        "MA20": ma20, 
+        "狀態": "低於" if price < ma20 else "高於",
+        "Trailing (PE/EPS)": f"{t_pe:.2f} (EPS: {t_eps:.2f})",
+        "Forward (PE/EPS)": f"{f_pe:.2f} (EPS: {f_eps:.2f})"
     }, df
 
 # --- 總覽表格 ---
