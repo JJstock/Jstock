@@ -8,13 +8,27 @@ st.title("📊 個人股票 MA20 與財報監控")
 # 設定股票清單與名稱
 my_stocks = {"2330.TW": "台積電", "2454.TW": "聯發科", "2308.TW": "台達電", "2317.TW": "鴻海", "3711.TW": "日月光"}
 
-def get_data(ticker):
+# 1. 取得歷史資料的函數
+def get_stock_data(ticker):
     stock = yf.Ticker(ticker)
-    info = stock.info
     df = stock.history(period="1mo")
+    return df  # 直接回傳 df
+
+# 2. 網頁顯示邏輯
+st.title("📈 個股趨勢監控")
+
+selected_ticker = st.selectbox("請選擇股票", ["2330.TW", "2454.TW", "2317.TW"])
+
+if selected_ticker:
+    df = get_stock_data(selected_ticker)
     
-    ma20 = df['Close'].rolling(window=20).mean().iloc[-1]
-    price = df['Close'].iloc[-1]
+    # 計算 MA20 方便對比
+    df['MA20'] = df['Close'].rolling(window=20).mean()
+    
+    # 畫圖：只取 'Close' 和 'MA20' 這兩欄位繪製
+    st.line_chart(df[['Close', 'MA20']])
+    
+    st.write("最新數據：", df.iloc[-1][['Close', 'MA20']])
     
     return {
         "現價": price,
