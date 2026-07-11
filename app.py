@@ -88,8 +88,16 @@ if selected_ticker:
                             vertical_spacing=0.03, row_heights=[0.7, 0.3])
         
         # 4. 繪製蠟燭圖 (上方)
-        fig.add_trace(go.Candlestick(x=df['Date_Str'], open=df['Open'], high=df['High'], 
-                                     low=df['Low'], close=df['Close'], name='股價'), row=1, col=1)
+        fig.add_trace(go.Candlestick(
+            x=df['Date_Str'], 
+            open=df['Open'], 
+            high=df['High'], 
+            low=df['Low'], 
+            close=df['Close'], 
+            name='股價',
+            increasing_line_color='#EF553B',  # 紅色：漲
+            decreasing_line_color='#00CC96'   # 綠色：跌
+        ), row=1, col=1)
         
         # 5. 繪製均線
         fig.add_trace(go.Scatter(x=df['Date_Str'], y=df['MA20'], name='MA20', line=dict(color='red', width=1.5)), row=1, col=1)
