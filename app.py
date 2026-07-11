@@ -60,28 +60,36 @@ st.divider()
 st.subheader("📈 個股趨勢圖 (MA20 vs MA60)")
 selected_ticker = st.selectbox("請選擇股票查看趨勢", list(my_stocks.keys()), format_func=lambda x: my_stocks[x])
 
-import altair as alt
+import plotly.graph_objects as go
+from plotly.subplots import make_subplots
 
 if selected_ticker:
     stock = yf.Ticker(selected_ticker)
-    df = stock.history(period="6mo")
+    df = stock.history(period="3mo")
     
-    # 計算均線
+    # 計算 MA
     df['MA20'] = df['Close'].rolling(window=20).mean()
     df['MA60'] = df['Close'].rolling(window=60).mean()
     
-    # 準備繪圖資料：將資料轉為長格式 (Long format)
-    df_melt = df[['Close', 'MA20', 'MA60']].tail(90).reset_index()
-    df_melt = df_melt.melt('Date', var_name='Type', value_name='Price')
+    # 建立雙子圖：row_heights 設定上方佔 70%，下方佔 30%
+    fig = make_subplots(rows=2, cols=1, shared_xaxes=True, 
+                        vertical_spacing=0.03, subplot_titles=(f'{selected_ticker} 走勢', '成交量'),
+                        row_heights=[0.7, 0.3])
+
+    # 1. 加入蠟燭圖 (上方)
+    fig.add_trace(go.Candlestick(x=df.index, open=df['Open'], high=df['High'], 
+                                 low=df['Low'], close=df['Close'], name='股價'), row=1, col=1)
     
-    # 繪製圖表
-    chart = alt.Chart(df_melt).mark_line().encode(
-        x='Date:T',
-        y='Price:Q',
-        color=alt.Color('Type', scale=alt.Scale(
-            domain=['Close', 'MA20', 'MA60'],
-            range=['#333333', 'red', 'blue'] # 自訂顏色：股價黑、MA20紅、MA60藍
-        ))
-    ).properties(width=700, height=400)
+    # 2. 加入均線 (上方)
+    fig.add_trace(go.Scatter(x=df.index, y=df['MA20'], line=dict(color='blue', width=1.5), name='MA20'), row=1, col=1)
+    fig.add_trace(go.Scatter(x=df.index, y=df['MA60'], line=dict(color='purple', width=1.5), name='MA60'), row=1, col=1)
+
+    # 3. 加入成交量長條圖 (下方)
+    # 用顏色區分漲跌：收盤 > 開盤為紅色(漲)，反之為綠色(跌)
+    colors = ['red' if row['Close'] >= row['Open'] else 'green' for index, row in df.iterrows()]
+    fig.add_trace(go.Bar(x=df.index, y=df['Volume'], marker_color=colors, name='成交量'), row=2, col=1)
+
+    # 4. 版面設定
+    fig.update_layout(xaxis_rangeslider_visible=False, height=600, showlegend=False)
     
-    st.altair_chart(chart, use_container_width=True)
+    st.plotly_chart(fig, use_container_width=True)
