@@ -81,8 +81,8 @@ if selected_ticker:
                                  low=df['Low'], close=df['Close'], name='股價'), row=1, col=1)
     
     # 2. 加入均線 (上方)
-    fig.add_trace(go.Scatter(x=df.index, y=df['MA20'], line=dict(color='blue', width=1.5), name='MA20'), row=1, col=1)
-    fig.add_trace(go.Scatter(x=df.index, y=df['MA60'], line=dict(color='purple', width=1.5), name='MA60'), row=1, col=1)
+    fig.add_trace(go.Scatter(x=df.index, y=df['MA20'], line=dict(color='red', width=1.5), name='MA20'), row=1, col=1)
+    fig.add_trace(go.Scatter(x=df.index, y=df['MA60'], line=dict(color='blue', width=1.5), name='MA60'), row=1, col=1)
 
     # 3. 加入成交量長條圖 (下方)
     # 用顏色區分漲跌：收盤 > 開盤為紅色(漲)，反之為綠色(跌)
