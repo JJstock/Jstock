@@ -40,7 +40,7 @@ def get_stock_data(ticker):
     return {
         "現價": price, 
         "MA20": ma20, 
-        "狀態": "低於" if price < ma20 else "高於",
+        "狀態": "⚠️低於" if price < ma20 else "✅高於",
         "Trailing (PE/EPS)": f"{t_pe:.2f} (EPS: {t_eps:.2f})",
         "Forward (PE/EPS)": f"{f_pe:.2f} (EPS: {f_eps:.2f})"
     }, df
