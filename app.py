@@ -67,7 +67,7 @@ if selected_ticker:
     
     # 計算 MA20
     df['MA20'] = df['Close'].rolling(window=20).mean()
-    
+    df['M620'] = df['Close'].rolling(window=60).mean()
     # 畫圖：只取最近 60 天的資料，避免圖表太擠
     st.line_chart(df[['Close', 'MA20']].tail(60))
     
