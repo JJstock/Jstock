@@ -88,7 +88,19 @@ if selected_ticker:
         fig.add_trace(go.Scatter(x=df['Date_Str'], y=df['MA60'], name='MA60', line=dict(color='blue', width=1.5)), row=1, col=1)
         
         # 3. 成交量
-        colors = ['#EF553B' if row['Close'] >= row['Open'] else '#00CC96' for index, row in df.iterrows()]
+        # 將原本的顏色邏輯修改為更嚴謹的判斷
+        # 若當日收盤價 > 當日開盤價，則為紅色(漲)；否則皆為綠色(跌)
+        colors = []
+        for index, row in df.iterrows():
+            if row['Close'] > row['Open']:
+                colors.append('#EF553B') # 紅色：漲
+            elif row['Close'] < row['Open']:
+                colors.append('#00CC96') # 綠色：跌
+            else:
+                # 若平盤，依據「昨日收盤價」判定，若無昨日則預設為灰色
+                colors.append('#A9A9A9') 
+        
+        # 加入成交量長條圖
         fig.add_trace(go.Bar(x=df['Date_Str'], y=df['Volume'], name='成交量', marker_color=colors), row=2, col=1)
         
         # 4. 強制對齊：將兩張圖的 X 軸都設為 category，並關閉多餘的軸線
