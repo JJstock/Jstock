@@ -8,7 +8,7 @@ st.title("📊 個人股票 MA20 與財報監控")
 my_stocks = {"2330.TW": "台積電", "2454.TW": "聯發科", "2308.TW": "台達電", "2317.TW": "鴻海", "3711.TW": "日月光","2303.TW": "聯電", "2327.TW": "國巨", "2383.TW": "台光電", "2345.TW":"智邦","3037.TW": "欣興"}
 
 @st.cache_data(ttl=3600)
- def get_stock_data(ticker):
+def get_stock_data(ticker):
     stock = yf.Ticker(ticker)
     info = stock.info
     df = stock.history(period="1mo")
