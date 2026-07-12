@@ -12,7 +12,7 @@ st.title("JStok 📊 MA20+60 與財報監控")
 # --- 繪圖函式 ---
 def plot_stock_chart(ticker):
     stock = yf.Ticker(ticker)
-    df = stock.history(period="12mo")
+    df = stock.history(period="6mo")
     if not df.empty:
         df['Volume'] = df['Volume'].fillna(0)
         df['Date_Str'] = df.index.strftime('%Y-%m-%d')
