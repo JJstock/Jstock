@@ -151,7 +151,7 @@ with tab1:
                 "Trailing (PE/EPS)": st.column_config.TextColumn("Trailing PE/EPS", width="medium"),
                 "Forward (PE/EPS)": st.column_config.TextColumn("Forward PE/EPS", width="medium"),
                 "PEG":st.column_config.TextColumn("PEG", width="small"),
-                "成長率":st.column_config.TextColumn("earningsGrowth", width="small")
+                "成長率":st.column_config.TextColumn("成長率", width="small")
             }
         )
     else:
