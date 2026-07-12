@@ -5,7 +5,6 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import numpy as np
 import gc
-import time
 
 st.set_page_config(page_title="Jstok股價監控", layout="wide")
 st.title("JStok 📊 MA20+60 與財報監控")
@@ -46,79 +45,78 @@ def get_stock_data(ticker):
     
     ma20 = df['Close'].rolling(window=20).mean().iloc[-1]
     price = df['Close'].iloc[-1]
-    status = f"⚠️低於MA20 ({ma20:.2f})" if price < ma20 else f"✅高於MA20 ({ma20:.2f})"
     
-    raw_peg = info.get('pegRatio')
-    growth = info.get('earningsGrowth', 0)
-    calc_peg = info.get('trailingPE', 0) / (growth * 100) if growth and growth != 0 else 0
-    PEG = f"{calc_peg:.2f}* ({raw_peg})"
+    # 修正 f-string 引號衝突
+    status = f"⚠️低於MA20 ({ma20:.2f})" if price < ma20 else f"✅高於MA20 ({ma20:.2f})"
     
     return {
         "現價": f"{price:.2f}",
         "狀態": status,
         "Trailing (PE/EPS)": f"{info.get('trailingPE', 0):.2f} (EPS: {info.get('trailingEps', 0):.2f})",
-        "Forward (PE/EPS)": f"{info.get('forwardPE', 0):.2f} (EPS: {info.get('forwardEps', 0):.2f})",
-        "PEG": PEG,
-        "成長率": f"{growth*100:.2f}%"
+        "Forward (PE/EPS)": f"{info.get('forwardPE', 0):.2f} (EPS: {info.get('forwardEps', 0):.2f})"
     }, df
 
 # --- 分頁內容 ---
 tab1, tab2 = st.tabs(["📊 主監控頁面", "🏦 金農專區"])
 
+# 1. 初始化 session_state，如果還沒有清單，就先放入預設的股票
 if 'my_stocks' not in st.session_state:
     st.session_state.my_stocks = {
         "2330.TW": "台積電", "2454.TW": "聯發科", "2308.TW": "台達電", "2317.TW": "鴻海", "3711.TW": "日月光", "2303.TW": "聯電", "2327.TW": "國巨", "2383.TW": "台光電", "2345.TW":"智邦","3037.TW": "欣興"
     }
 
-# --- Sidebar ---
+# 2. 在頁面中加入輸入框
 with st.sidebar:
     st.subheader("➕ 新增監控股票")
+       
+    # 讓使用者選擇市場類型
     market_type = st.radio("選擇市場", [".TW (上市)", ".TWO (上櫃)"], horizontal=True)
     new_ticker = st.text_input("輸入股票代號", placeholder="例如: 2330")
     new_name = st.text_input("輸入公司名稱", placeholder="例如: 台積電")
     
     if st.button("加入監控清單"):
         if new_ticker and new_name:
+            # 自動組合代號
             suffix = ".TW" if ".TW" in market_type else ".TWO"
             full_ticker = f"{new_ticker}{suffix}"
             
-            with st.spinner("正在驗證股票代號..."):
-                test_ticker = yf.Ticker(full_ticker)
-                test_info = test_ticker.info
-                # 判斷是否為有效股票 (若 symbol 欄位不存在代表抓不到該公司)
-                if test_info and 'symbol' in test_info:
-                    st.session_state.my_stocks[full_ticker] = new_name
-                    st.toast(f"✅ {new_name} 加入成功！", icon="🎉")
-                    time.sleep(1)
-                    st.rerun()
-                else:
-                    st.error(f"❌ 錯誤：無法找到代號 {full_ticker}，請確認代號是否正確。")
-        else:
-            st.warning("請輸入完整的代號與名稱！")
-
-    st.markdown("---")
+            st.session_state.my_stocks[full_ticker] = new_name
+            st.success(f"已加入 {new_name} ({full_ticker})")
+            st.rerun()
+    
+    st.markdown("---") # 分隔線
+    
     st.subheader("🗑️ 刪除監控股票")
-    ticker_to_delete = st.selectbox("選擇要刪除的項目", list(st.session_state.my_stocks.keys()), format_func=lambda x: st.session_state.my_stocks[x])
+    # 建立一個下拉選單供選擇要刪除的股票
+    ticker_to_delete = st.selectbox(
+        "選擇要刪除的項目", 
+        list(st.session_state.my_stocks.keys()), 
+        format_func=lambda x: st.session_state.my_stocks[x]
+    )
+    
     if st.button("刪除此項目"):
         if ticker_to_delete in st.session_state.my_stocks:
             del st.session_state.my_stocks[ticker_to_delete]
             st.warning(f"已刪除 {ticker_to_delete}")
-            st.rerun()
+            st.rerun() # 自動重新整理
 
-# --- Tab 1 ---
+# 3. 在 tab1 讀取時，改用 session_state 的資料
 with tab1:
     st.subheader("📋 監控清單總覽")
     data_list = []
+    # 使用 session_state 進行迴圈
     for symbol, name in st.session_state.my_stocks.items():
         d, _ = get_stock_data(symbol)
         if d:
-            d['名稱'] = f"{symbol} {name}"
+            display_name = f"{symbol} {name}"
+            d['名稱'] = display_name
             data_list.append(d)
 
+    # 顯示表格
     if data_list:
         df_final = pd.DataFrame(data_list).set_index('名稱')
         st.dataframe(
-            df_final,
+            df_final, 
             use_container_width=True,
             column_config={
                 "_index": st.column_config.TextColumn("股票名稱", width="medium"),
@@ -126,30 +124,38 @@ with tab1:
                 "狀態": st.column_config.TextColumn("狀態", width="small"),
                 "Trailing (PE/EPS)": st.column_config.TextColumn("Trailing PE/EPS", width="medium"),
                 "Forward (PE/EPS)": st.column_config.TextColumn("Forward PE/EPS", width="medium"),
-                "PEG": st.column_config.TextColumn("PEG (trail/growth)", width="small"),
-                "成長率": st.column_config.TextColumn("成長率", width="small")
             }
         )
     else:
         st.info("正在讀取資料，請稍候...")
-
+    
     st.subheader("📈 個股趨勢圖")
-    selected_ticker = st.selectbox("請選擇股票", list(st.session_state.my_stocks.keys()), format_func=lambda x: st.session_state.my_stocks[x])
+    # 【關鍵修正】：這裡改用 session_state，新增的股票才會出現在下拉選單中
+    selected_ticker = st.selectbox(
+        "請選擇股票", 
+        list(st.session_state.my_stocks.keys()), 
+        format_func=lambda x: st.session_state.my_stocks[x]
+    )
     if selected_ticker:
         plot_stock_chart(selected_ticker)
 
 with tab2:
     st.subheader("🏦 金融股績效監控")
-    financial_stocks = {"2881.TW": "富邦金", "2882.TW": "國泰金", "2883.TW": "凱基金", "2884.TW": "玉山金", "2891.TW": "中信金", "2885.TW": "元大金", "2887.TW": "台新新光金", "2890.TW": "永豐金", "2889.TW": "國票金", "2834.TW": "台企銀"}
+    financial_stocks = {"2881.TW": "富邦金", "2882.TW": "國泰金", "2883.TW": "凱基金", "2891.TW": "中信金", "2885.TW": "元大金", "2887.TW": "台新新光金", "2890.TW": "永豐金"}
+    
     finance_data = []
     for sym, name in financial_stocks.items():
         ticker = yf.Ticker(sym)
-        hist = ticker.history(period="20d")
+        hist = ticker.history(period="20d") # 為了計算 MA20，需至少取 20 天數據
         if hist.empty: continue
+        
         info = ticker.info
         current_price = hist['Close'].iloc[-1]
         ma20 = hist['Close'].rolling(window=20).mean().iloc[-1]
+        
+        # 修正 f-string 引號衝突並確保變數存在
         status = f"⚠️低於MA20 ({ma20:.2f})" if current_price < ma20 else f"✅高於MA20 ({ma20:.2f})"
+        
         finance_data.append({
             "名稱": f"{sym.replace('.TW', '')} {name}",
             "現價": f"{current_price:.2f}",
@@ -159,9 +165,11 @@ with tab2:
             "股價淨值比": f"{info.get('priceToBook', 0):.2f}",
             "殖利率": f"{info.get('dividendYield', 0) :.2f}%" if info.get('dividendYield') else "0.00%"
         })
+           
+    # 顯示表格
     df_fin = pd.DataFrame(finance_data).set_index('名稱')
     st.dataframe(
-        df_fin,
+        df_fin, 
         use_container_width=True,
         column_config={
             "_index": st.column_config.TextColumn("股票名稱", width="medium"),
@@ -173,7 +181,9 @@ with tab2:
             "殖利率": st.column_config.TextColumn("殖利率", width="small"),
         }
     )
+    
     st.divider()
+    
     st.subheader("📈 金融股趨勢圖")
     fin_ticker = st.selectbox("選擇金融股", list(financial_stocks.keys()), format_func=lambda x: financial_stocks[x], key="fin_select")
     if fin_ticker:
