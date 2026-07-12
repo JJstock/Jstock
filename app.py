@@ -38,8 +38,8 @@ def get_stock_data(ticker):
     f_eps = info.get('forwardEps') or 0
     
     return {
-        "現價": price.2f, 
-        "MA20": ma20.2f, 
+        "現價": f"{price:.2f}", # 這裡改為字串格式化
+        "MA20": f"{ma20:.2f}", # 同樣處理 MA20
         "狀態": "⚠️低於" if price < ma20 else "✅高於",
         "Trailing (PE/EPS)": f"{t_pe:.2f} (EPS: {t_eps:.2f})",
         "Forward (PE/EPS)": f"{f_pe:.2f} (EPS: {f_eps:.2f})"
