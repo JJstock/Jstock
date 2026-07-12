@@ -164,7 +164,7 @@ for col in ['現價','Trailing (PE/EPS)','Forward (PE/EPS)', 'PEG','成長率']:
                 "成長率":st.column_config.TextColumn("成長率", width="small")
             }
         )
-    else:
+else:
         st.info("正在讀取資料，請稍候...")
     
     st.subheader("📈 個股趨勢圖")
