@@ -70,19 +70,34 @@ if 'my_stocks' not in st.session_state:
         "2330.TW": "台積電", "2454.TW": "聯發科", "2308.TW": "台達電", "2317.TW": "鴻海", "3711.TW": "日月光", "2303.TW": "聯電", "2327.TW": "國巨", "2383.TW": "台光電", "2345.TW":"智邦","3037.TW": "欣興"
     }
 
-with st.sidebar:
-    st.subheader("➕ 新增監控股票")
-    market_type = st.radio("選擇市場", [".TW (上市)", ".TWO (上櫃)"], horizontal=True)
-    new_ticker = st.text_input("輸入股票代號", placeholder="例如: 2330")
-    new_name = st.text_input("輸入公司名稱", placeholder="例如: 台積電")
-    if st.button("加入監控清單"):
-        if new_ticker and new_name:
-            suffix = ".TW" if ".TW" in market_type else ".TWO"
-            full_ticker = f"{new_ticker}{suffix}"
-            st.session_state.my_stocks[full_ticker] = new_name
-            st.toast(f"✅ {new_name} 加入成功！", icon="🎉")
-            time.sleep(2)
-            st.rerun()
+# 2. 在頁面中加入輸入框 (Sidebar 區塊)
+    with st.sidebar:
+        st.subheader("➕ 新增監控股票")
+        market_type = st.radio("選擇市場", [".TW (上市)", ".TWO (上櫃)"], horizontal=True)
+        new_ticker = st.text_input("輸入股票代號", placeholder="例如: 2330")
+        new_name = st.text_input("輸入公司名稱", placeholder="例如: 台積電")
+        
+        if st.button("加入監控清單"):
+            if new_ticker and new_name:
+                suffix = ".TW" if ".TW" in market_type else ".TWO"
+                full_ticker = f"{new_ticker}{suffix}"
+                
+                # --- 【關鍵修改】新增驗證邏輯 ---
+                with st.spinner("正在驗證股票代號..."):
+                    test_ticker = yf.Ticker(full_ticker)
+                    # 嘗試抓取最新價格，如果抓不到資料，info 會是空的或者報錯
+                    test_info = test_ticker.info
+                    
+                    # 判斷是否為有效股票 (若 symbol 欄位不存在代表抓不到該公司)
+                    if test_info and 'symbol' in test_info:
+                        st.session_state.my_stocks[full_ticker] = new_name
+                        st.toast(f"✅ {new_name} 加入成功！", icon="🎉")
+                        time.sleep(1)
+                        st.rerun()
+                    else:
+                        st.error(f"❌ 錯誤：無法找到代號 {full_ticker}，請確認代號是否正確。")
+            else:
+                st.warning("請輸入完整的代號與名稱！")
 
     st.markdown("---")
     st.subheader("🗑️ 刪除監控股票")
