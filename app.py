@@ -50,7 +50,7 @@ def get_stock_data(ticker):
     status = f"⚠️低於MA20 ({ma20:.2f})" if price < ma20 else f"✅高於MA20 ({ma20:.2f})"
     
     return {
-        "現價": f"{price:.2f}",
+        "現價": f"{price:}",
         "狀態": status,
         "Trailing (PE/EPS)": f"{info.get('trailingPE', 0):.2f} (EPS: {info.get('trailingEps', 0):.2f})",
         "Forward (PE/EPS)": f"{info.get('forwardPE', 0):.2f} (EPS: {info.get('forwardEps', 0):.2f})"
@@ -151,7 +151,7 @@ with tab2:
         
         finance_data.append({
             "名稱": f"{sym.replace('.TW', '')} {name}",
-            "現價": f"{current_price:.2f}",
+            "現價": f"{current_price:}",
             "狀態": status,
             "Trailing (PE/EPS)": f"{info.get('trailingPE', 0):.2f} (EPS: {info.get('trailingEps', 0):.2f})",
             "Forward (PE/EPS)": f"{info.get('forwardPE', 0):.2f} (EPS: {info.get('forwardEps', 0):.2f})",
