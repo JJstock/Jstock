@@ -97,7 +97,32 @@ with tab2:
     for sym, name in financial_stocks.items():
         ticker = yf.Ticker(sym)
         info = ticker.info
-        finance_data.append({"名稱": name, "本益比": info.get('trailingPE', 0), "殖利率": f"{info.get('dividendYield', 0)*100:.2f}%"})
+        finance_data.append({"名稱": name, "本益比": info.get('trailingPE', 0), "殖利率": f"{info.get('dividendYield', 0):.2f}%"})
+        data_list = []
+    for symbol, name in my_stocks.items():
+        d, _ = get_stock_data(symbol)
+        if d:
+            display_name = f"{symbol.replace('.TW', '')} {name}"
+            d['名稱'] = display_name
+            data_list.append(d)
+
+    # 顯示表格
+    if data_list:
+        df_final = pd.DataFrame(data_list).set_index('名稱')
+        st.dataframe(
+            df_final, 
+            use_container_width=True,
+            column_config={
+                "_index": st.column_config.TextColumn("股票名稱", width="medium"),
+                "現價": st.column_config.TextColumn("現價", width="medium"),
+                "MA20": st.column_config.TextColumn("MA20", width="medium"),
+                "狀態": st.column_config.TextColumn("狀態", width="small"),
+                "Trailing (PE/EPS)": st.column_config.TextColumn("Trailing PE/EPS", width="medium"),
+                "Forward (PE/EPS)": st.column_config.TextColumn("Forward PE/EPS", width="medium"),
+            }
+        )
+    else:
+        st.info("正在讀取資料，請稍候...")
     st.dataframe(pd.DataFrame(finance_data), use_container_width=True)
     st.divider()
     st.subheader("📈 金融股趨勢圖")
