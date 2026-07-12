@@ -76,13 +76,24 @@ with st.sidebar:
     
     if st.button("加入監控清單"):
         if new_ticker and new_name:
-            # 自動組合代號
+            # 組合完整代號
             suffix = ".TW" if ".TW" in market_type else ".TWO"
             full_ticker = f"{new_ticker}{suffix}"
             
-            st.session_state.my_stocks[full_ticker] = new_name
-            st.success(f"已加入 {new_name} ({full_ticker})")
-            st.rerun()
+            # 測試是否能抓到資料，以判斷加入是否成功
+            try:
+                test_stock = yf.Ticker(full_ticker)
+                test_hist = test_stock.history(period="1d")
+                
+                if not test_hist.empty:
+                    st.session_state.my_stocks[full_ticker] = new_name
+                    st.success(f"✅ 加入成功：{new_name} ({full_ticker})")
+                    # 使用 st.rerun() 讓畫面更新顯示新股票
+                    st.rerun()
+                else:
+                    st.error(f"❌ 加入失敗：找不到代號 {full_ticker} 的資料，請確認代號是否正確。")
+            except Exception as e:
+                st.error(f"❌ 加入失敗：系統發生錯誤 ({e})")
     
     st.markdown("---") # 分隔線
     
