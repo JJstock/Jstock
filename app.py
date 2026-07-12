@@ -9,7 +9,7 @@ import gc
 st.set_page_config(page_title="個人股價監控", layout="wide")
 st.title("JStok 📊 MA20+60 與財報監控")
 
-# --- 封裝繪圖邏輯 (重用性高) ---
+# --- 繪圖函式 ---
 def plot_stock_chart(ticker):
     stock = yf.Ticker(ticker)
     df = stock.history(period="3mo")
@@ -34,30 +34,40 @@ def plot_stock_chart(ticker):
     else:
         st.warning("無數據")
 
+# --- 資料抓取函式 ---
+@st.cache_data(ttl=3600)
+def get_stock_data(ticker):
+    gc.collect()
+    stock = yf.Ticker(ticker)
+    info = stock.info if stock.info else {}
+    df = stock.history(period="6mo")
+    if df.empty: return None, None
+    ma20 = df['Close'].rolling(window=20).mean().iloc[-1]
+    price = df['Close'].iloc[-1]
+    return {
+        "現價": f"{price:.2f}",
+        "MA20": f"{ma20:.2f}",
+        "狀態": "⚠️低於MA20" if price < ma20 else "✅高於MA20",
+        "Trailing (PE/EPS)": f"{info.get('trailingPE', 0):.2f} (EPS: {info.get('trailingEps', 0):.2f})",
+        "Forward (PE/EPS)": f"{info.get('forwardPE', 0):.2f} (EPS: {info.get('forwardEps', 0):.2f})"
+    }, df
+
 # --- 分頁內容 ---
 tab1, tab2 = st.tabs(["📊 主監控頁面", "🏦 金融股財務專區"])
 
 with tab1:
-    my_stocks = {"2330.TW": "台積電", "2454.TW": "聯發科", "2308.TW": "台達電"} # 縮減示範
+    my_stocks = {"2330.TW": "台積電", "2454.TW": "聯發科", "2308.TW": "台達電"}
     st.subheader("📋 監控清單總覽")
-    if data_list:
-    df_final = pd.DataFrame(data_list).set_index('名稱')
+    data_list = []
+    for symbol, name in my_stocks.items():
+        d, _ = get_stock_data(symbol)
+        if d:
+            d['名稱'] = f"{symbol.replace('.TW', '')} {name}"
+            data_list.append(d)
     
-    st.dataframe(
-        df_final, 
-        use_container_width=True, # 讓表格佔滿版面寬度
-        column_config={
-            "_index": st.column_config.TextColumn(
-                "股票名稱", 
-                width="medium"  # 將名稱欄位調整為 medium
-            ),
-            "現價": st.column_config.TextColumn("現價", width="small"),
-            "MA20": st.column_config.TextColumn("MA20", width="small"),
-            "狀態": st.column_config.TextColumn("狀態", width="small"),
-            "Trailing (PE/EPS)": st.column_config.TextColumn("Trailing PE/EPS", width="medium"),
-            "Forward (PE/EPS)": st.column_config.TextColumn("Forward PE/EPS", width="medium"),
-        }
-    )
+    if data_list:
+        st.dataframe(pd.DataFrame(data_list).set_index('名稱'), use_container_width=True)
+    
     st.subheader("📈 個股趨勢圖")
     selected_ticker = st.selectbox("請選擇股票", list(my_stocks.keys()), format_func=lambda x: my_stocks[x])
     if selected_ticker:
@@ -66,21 +76,12 @@ with tab1:
 with tab2:
     st.subheader("🏦 金融股績效監控")
     financial_stocks = {"2881.TW": "富邦金", "2882.TW": "國泰金", "2891.TW": "中信金"}
-    
-    # 這裡顯示不一樣的表格：例如顯示股息殖利率或波動率 (假設)
     finance_data = []
     for sym, name in financial_stocks.items():
         ticker = yf.Ticker(sym)
         info = ticker.info
-        finance_data.append({
-            "名稱": name,
-            "本益比": info.get('trailingPE', 0),
-            "股價淨值比": info.get('priceToBook', 0),
-            "殖利率": f"{info.get('dividendYield', 0) * 100:.2f}%"
-        })
-    
+        finance_data.append({"名稱": name, "本益比": info.get('trailingPE', 0), "殖利率": f"{info.get('dividendYield', 0)*100:.2f}%"})
     st.dataframe(pd.DataFrame(finance_data), use_container_width=True)
-    
     st.divider()
     st.subheader("📈 金融股趨勢圖")
     fin_ticker = st.selectbox("選擇金融股", list(financial_stocks.keys()), format_func=lambda x: financial_stocks[x], key="fin_select")
