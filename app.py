@@ -50,7 +50,7 @@ def get_stock_data(ticker):
     
     # 修正語法錯誤
     calc_peg = info.get('trailingPE', 0) / (growth * 100) if (growth and growth != 0) else 0
-    PEG = f"{calc_peg:.2f}* ({raw_peg})"
+    PEG = f"{raw_peg} ({calc_peg:.2f})"
     
     status = f"⚠️低於MA20 ({ma20:.2f})" if price < ma20 else f"✅高於MA20 ({ma20:.2f})"
     
