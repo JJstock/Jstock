@@ -55,7 +55,7 @@ def get_stock_data(ticker):
     # if raw_peg is None or raw_peg == 0:
     growth = info.get('earningsGrowth', 0) # 假設這是一個小數 (例如 0.15 代表 15%)
     calc_peg = info.get('forwardPE',0) / (growth * 100) if growth and growth != 0 else 0
-    PEG=f"{calc_peg:.2f}*{raw_peg}"
+    PEG=f"{calc_peg:.2f}* ({raw_peg})"
     # else:
     #     PEG=f"{raw_peg:.2f}"
     return {
