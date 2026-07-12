@@ -37,34 +37,20 @@ def plot_stock_chart(ticker):
 # --- 資料抓取函式 ---
 @st.cache_data(ttl=3600)
 def get_stock_data(ticker):
-    gc.collect()
-    stock = yf.Ticker(ticker)
-    info = stock.info if stock.info else {}
-    df = stock.history(period="6mo")
-    if df.empty: return None, None
+    # ... (省略前面抓取 info 的過程)
+    # 計算 PEG 和 成長率 (假設 growth 為 0.15)
+    growth = info.get('earningsGrowth', 0)
+    fwd_pe = info.get('forwardPE', 0)
+    calc_peg = fwd_pe / (growth * 100) if (growth and growth != 0) else 0
     
-    ma20 = df['Close'].rolling(window=20).mean().iloc[-1]
-    price = df['Close'].iloc[-1]
-    
-    # 修正 f-string 引號衝突
-    status = f"⚠️低於MA20 ({ma20:.2f})" if price < ma20 else f"✅高於MA20 ({ma20:.2f})"
-    
-    # PEG 計算邏輯
-    raw_peg = info.get('pegRatio')
-        # 若 API 沒有回傳 pegRatio，我們用公式補上計算邏輯
-    # if raw_peg is None or raw_peg == 0:
-    growth = info.get('earningsGrowth', 0) # 假設這是一個小數 (例如 0.15 代表 15%)
-    calc_peg = info.get('trailingPE',0) / (growth * 100) if growth and growth != 0 else 0
-    PEG=f"{calc_peg:.2f}* ({raw_peg})"
-    # else:
-    #     PEG=f"{raw_peg:.2f}"
+    # 回傳字典時，同時包含數值與格式化字串
     return {
+        "現價_num": price,
         "現價": f"{price:.2f}",
-        "狀態": status,
-        "Trailing (PE/EPS)": f"{info.get('trailingPE', 0):.2f} (EPS: {info.get('trailingEps', 0):.2f})",
-        "Forward (PE/EPS)": f"{info.get('forwardPE', 0):.2f} (EPS: {info.get('forwardEps', 0):.2f})",
-        "PEG":PEG,
-        "成長率":f"{growth*100:.2f}%"
+        "PEG_num": calc_peg if calc_peg != 0 else info.get('pegRatio', 0),
+        "PEG": f"{calc_peg:.2f}*" if calc_peg != 0 else f"{info.get('pegRatio', 0):.2f}",
+        "成長率_num": growth * 100,
+        "成長率": f"{growth*100:.2f}%",
     },df
 
 # --- 分頁內容 ---
@@ -155,13 +141,13 @@ for col in ['現價','Trailing (PE/EPS)','Forward (PE/EPS)', 'PEG','成長率']:
             df_final, 
             use_container_width=True,
             column_config={
-                "_index": st.column_config.TextColumn("股票名稱", width="medium"),
-                "現價": st.column_config.TextColumn("現價", width="small"),
-                "狀態": st.column_config.TextColumn("狀態", width="small"),
-                "Trailing (PE/EPS)": st.column_config.TextColumn("Trailing PE/EPS", width="medium"),
-                "Forward (PE/EPS)": st.column_config.TextColumn("Forward PE/EPS", width="medium"),
-                "PEG":st.column_config.TextColumn("PEG (trail/growth)", width="small"),
-                "成長率":st.column_config.TextColumn("成長率", width="small")
+                "現價": st.column_config.NumberColumn("現價", format="%.2f"),
+                "PEG": st.column_config.TextColumn("PEG (trail/growth)"),
+                "成長率": st.column_config.TextColumn("成長率"),
+                # 隱藏那些 "_num" 結尾的輔助欄位
+                "現價_num": None,
+                "PEG_num": None,
+                "成長率_num": None,
             }
         )
 else:
