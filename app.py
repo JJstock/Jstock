@@ -54,7 +54,7 @@ def get_stock_data(ticker):
     PEG = f"{calc_peg:.2f}* ({raw_peg})"
     
     return {
-        "現價": f"{price:.2f}",
+        "現價": price:,
         "狀態": status,
         "Trailing (PE/EPS)": f"{info.get('trailingPE', 0):.2f} (EPS: {info.get('trailingEps', 0):.2f})",
         "Forward (PE/EPS)": f"{info.get('forwardPE', 0):.2f} (EPS: {info.get('forwardEps', 0):.2f})",
