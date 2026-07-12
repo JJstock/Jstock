@@ -100,7 +100,7 @@ with tab2:
         # 整理資料
         finance_data.append({
             "名稱": f"{sym.replace('.TW', '')} {name}",
-            "現價": st.column_config.TextColumn("現價", width="medium"),
+            "現價": f"{price:.2f}",
             "本益比": f"{info.get('trailingPE', 0):.2f}",
             "股價淨值比": f"{info.get('priceToBook', 0):.2f}",
             "殖利率": f"{info.get('dividendYield', 0) * 100:.2f}%" if info.get('dividendYield') else "0.00%"
@@ -113,6 +113,7 @@ with tab2:
         use_container_width=True,
         column_config={
             "_index": st.column_config.TextColumn("股票名稱", width="medium"),
+            "現價": st.column_config.TextColumn("現價", width="medium"),
             "本益比": st.column_config.TextColumn("本益比", width="small"),
             "股價淨值比": st.column_config.TextColumn("股價淨值比", width="small"),
             "殖利率": st.column_config.TextColumn("殖利率", width="small"),
