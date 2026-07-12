@@ -107,7 +107,7 @@ with tab2:
             "現價": f"{current_price:.2f}",
             "本益比": f"{info.get('trailingPE', 0):.2f}",
             "股價淨值比": f"{info.get('priceToBook', 0):.2f}",
-            "殖利率": f"{info.get('dividendYield', 0) * 100:.2f}%" if info.get('dividendYield') else "0.00%"
+            "殖利率": f"{info.get('dividendYield', 0):.2f}%" if info.get('dividendYield') else "0.00%"
         })
     
     # 顯示表格
