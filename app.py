@@ -68,14 +68,22 @@ if 'my_stocks' not in st.session_state:
 # 2. 在頁面中加入輸入框
 with st.sidebar:
     st.subheader("➕ 新增監控股票")
-    new_ticker = st.text_input("輸入股票代號 (例如: 2330.TW)", placeholder="2330.TW")
-    new_name = st.text_input("輸入公司名稱", placeholder="台積電")
+    new_ticker = st.text_input("輸入股票代號", placeholder="例如: 2330")
+    
+    # 讓使用者選擇市場類型
+    market_type = st.radio("選擇市場", [".TW (上市)", ".TWO (上櫃)"], horizontal=True)
+    
+    new_name = st.text_input("輸入公司名稱", placeholder="例如: 台積電")
     
     if st.button("加入監控清單"):
         if new_ticker and new_name:
-            st.session_state.my_stocks[new_ticker] = new_name
-            st.success(f"已加入 {new_name}")
-            st.rerun() # 自動重新整理
+            # 自動組合代號
+            suffix = ".TW" if ".TW" in market_type else ".TWO"
+            full_ticker = f"{new_ticker}{suffix}"
+            
+            st.session_state.my_stocks[full_ticker] = new_name
+            st.success(f"已加入 {new_name} ({full_ticker})")
+            st.rerun()
     
     st.markdown("---") # 分隔線
     
