@@ -64,7 +64,7 @@ def get_stock_data(ticker):
         "Trailing (PE/EPS)": f"{info.get('trailingPE', 0):.2f} (EPS: {info.get('trailingEps', 0):.2f})",
         "Forward (PE/EPS)": f"{info.get('forwardPE', 0):.2f} (EPS: {info.get('forwardEps', 0):.2f})",
         "PEG":PEG,
-        "成長率":growth
+        "成長率":f"{growth}*100 %"
     },df
 
 # --- 分頁內容 ---
