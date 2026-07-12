@@ -57,9 +57,21 @@ for symbol, name in my_stocks.items():
         data_list.append(d)
 
 if data_list:
-    st.dataframe(pd.DataFrame(data_list).set_index('名稱'), width='stretch')
-
-st.divider()
+    df_final = pd.DataFrame(data_list).set_index('名稱')
+    
+    # 進行欄位寬度與格式的細部調整
+    st.dataframe(
+        df_final, 
+        width=None, # 設定為 None 會讓表格自動適應螢幕寬度，而不是被強制拉伸
+        column_config={
+            "現價": st.column_config.TextColumn("現價", width="small"),
+            "MA20": st.column_config.TextColumn("MA20", width="small"),
+            "狀態": st.column_config.TextColumn("狀態", width="small"),
+            "Trailing (PE/EPS)": st.column_config.TextColumn("Trailing PE/EPS", width="medium"),
+            "Forward (PE/EPS)": st.column_config.TextColumn("Forward PE/EPS", width="medium"),
+        },
+        use_container_width=True # 這是 Streamlit 新版的做法，讓表格佔滿容器
+    )
 
 # --- 個別趨勢圖 (成交量顏色 + 跳過假日) ---
 st.subheader("📈 個股趨勢圖")
