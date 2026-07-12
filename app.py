@@ -47,49 +47,56 @@ def get_stock_data(ticker):
     price = df['Close'].iloc[-1]
     raw_peg = info.get('pegRatio')
     growth = info.get('earningsGrowth', 0)
-    calc_peg = info.get('trailingPE', 0) / (growth * 100) 
-    if growth and growth != 0 
-    else 0
+    
+    # 修正語法錯誤
+    calc_peg = info.get('trailingPE', 0) / (growth * 100) if (growth and growth != 0) else 0
     PEG = f"{calc_peg:.2f}* ({raw_peg})"
-    # 修正 f-string 引號衝突
+    
     status = f"⚠️低於MA20 ({ma20:.2f})" if price < ma20 else f"✅高於MA20 ({ma20:.2f})"
     
     return {
         "現價": f"{price:.2f}",
         "狀態": status,
         "Trailing (PE/EPS)": f"{info.get('trailingPE', 0):.2f} (EPS: {info.get('trailingEps', 0):.2f})",
-        "Forward (PE/EPS)": f"{info.get('forwardPE', 0):.2f} (EPS: {info.get('forwardEps', 0):.2f})"
+        "Forward (PE/EPS)": f"{info.get('forwardPE', 0):.2f} (EPS: {info.get('forwardEps', 0):.2f})",
         "PEG": PEG,
         "成長率": f"{growth*100:.2f}%"
     }, df
 
-# --- 分頁內容 ---
+# --- 主程式流程 ---
 tab1, tab2 = st.tabs(["📊 主監控頁面", "🏦 金農專區"])
 
-# 1. 初始化 session_state，如果還沒有清單，就先放入預設的股票
 if 'my_stocks' not in st.session_state:
-    st.session_state.my_stocks = {
-        "2330.TW": "台積電", "2454.TW": "聯發科", "2308.TW": "台達電", "2317.TW": "鴻海", "3711.TW": "日月光", "2303.TW": "聯電", "2327.TW": "國巨", "2383.TW": "台光電", "2345.TW":"智邦","3037.TW": "欣興"
-    }
+    st.session_state.my_stocks = {"2330.TW": "台積電", "2454.TW": "聯發科"}
 
-# 2. 在頁面中加入輸入框
 with st.sidebar:
     st.subheader("➕ 新增監控股票")
-       
-    # 讓使用者選擇市場類型
     market_type = st.radio("選擇市場", [".TW (上市)", ".TWO (上櫃)"], horizontal=True)
-    new_ticker = st.text_input("輸入股票代號", placeholder="例如: 2330")
-    new_name = st.text_input("輸入公司名稱", placeholder="例如: 台積電")
+    new_ticker = st.text_input("輸入股票代號")
+    new_name = st.text_input("輸入公司名稱")
     
     if st.button("加入監控清單"):
         if new_ticker and new_name:
-            # 自動組合代號
             suffix = ".TW" if ".TW" in market_type else ".TWO"
             full_ticker = f"{new_ticker}{suffix}"
             
-            st.session_state.my_stocks[full_ticker] = new_name
-            st.success(f"已加入 {new_name} ({full_ticker})")
-            st.rerun()
+            # 使用 try-except 保護主程式不崩潰
+            try:
+                with st.spinner("正在驗證股票代號..."):
+                    test_stock = yf.Ticker(full_ticker)
+                    test_hist = test_stock.history(period="1d")
+                    
+                    if not test_hist.empty:
+                        st.session_state.my_stocks[full_ticker] = new_name
+                        st.success(f"✅ 已加入 {new_name}")
+                        time.sleep(1)
+                        st.rerun()
+                    else:
+                        st.error("❌ 找不到該股票資料，請檢查代號")
+            except Exception as e:
+                st.error(f"❌ 發生錯誤: {e}")
+        else:
+            st.warning("請填寫完整資訊")
     
     st.markdown("---") # 分隔線
     
