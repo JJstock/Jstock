@@ -97,18 +97,29 @@ with tab2:
     for sym, name in financial_stocks.items():
         ticker = yf.Ticker(sym)
         info = ticker.info
-        finance_data.append({"名稱": name, "本益比": info.get('trailingPE', 0), "殖利率": f"{info.get('dividendYield', 0):.2f}%"})
-        data_list = []
-    for symbol, name in my_stocks.items():
-        d, _ = get_stock_data(symbol)
-        if d:
-            display_name = f"{symbol.replace('.TW', '')} {name}"
-            d['名稱'] = display_name
-            data_list.append(d)
-
-   
-    st.dataframe(pd.DataFrame(finance_data), use_container_width=True)
+        # 整理資料
+        finance_data.append({
+            "名稱": f"{sym.replace('.TW', '')} {name}",
+            "本益比": f"{info.get('trailingPE', 0):.2f}",
+            "股價淨值比": f"{info.get('priceToBook', 0):.2f}",
+            "殖利率": f"{info.get('dividendYield', 0) * 100:.2f}%" if info.get('dividendYield') else "0.00%"
+        })
+    
+    # 顯示表格
+    df_fin = pd.DataFrame(finance_data).set_index('名稱')
+    st.dataframe(
+        df_fin, 
+        use_container_width=True,
+        column_config={
+            "_index": st.column_config.TextColumn("股票名稱", width="medium"),
+            "本益比": st.column_config.TextColumn("本益比", width="small"),
+            "股價淨值比": st.column_config.TextColumn("股價淨值比", width="small"),
+            "殖利率": st.column_config.TextColumn("殖利率", width="small"),
+        }
+    )
+    
     st.divider()
+    
     st.subheader("📈 金融股趨勢圖")
     fin_ticker = st.selectbox("選擇金融股", list(financial_stocks.keys()), format_func=lambda x: financial_stocks[x], key="fin_select")
     if fin_ticker:
