@@ -54,8 +54,8 @@ def get_stock_data(ticker):
         "狀態": status,
         "Trailing (PE/EPS)": f"{info.get('trailingPE', 0):.2f} (EPS: {info.get('trailingEps', 0):.2f})",
         "Forward (PE/EPS)": f"{info.get('forwardPE', 0):.2f} (EPS: {info.get('forwardEps', 0):.2f})",
-         "PEG":f"{ info.get('pegRatio'), 0):.2f
-    }, df
+        "PEG":              f"{ info.get('pegRatio'), 0):.2f}", 
+        df
 
 # --- 分頁內容 ---
 tab1, tab2 = st.tabs(["📊 主監控頁面", "🏦 金農專區"])
