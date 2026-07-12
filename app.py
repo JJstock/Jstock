@@ -66,7 +66,7 @@ if 'my_stocks' not in st.session_state:
     }
 
 # 2. 在頁面中加入輸入框
-with st.sidebar: # 放在側邊欄比較整潔
+with st.sidebar:
     st.subheader("➕ 新增監控股票")
     new_ticker = st.text_input("輸入股票代號 (例如: 2317.TW)", placeholder="2317.TW")
     new_name = st.text_input("輸入公司名稱", placeholder="鴻海")
@@ -75,7 +75,23 @@ with st.sidebar: # 放在側邊欄比較整潔
         if new_ticker and new_name:
             st.session_state.my_stocks[new_ticker] = new_name
             st.success(f"已加入 {new_name}")
-            st.rerun() # 自動重新整理讓表格更新
+            st.rerun() # 自動重新整理
+    
+    st.markdown("---") # 分隔線
+    
+    st.subheader("🗑️ 刪除監控股票")
+    # 建立一個下拉選單供選擇要刪除的股票
+    ticker_to_delete = st.selectbox(
+        "選擇要刪除的項目", 
+        list(st.session_state.my_stocks.keys()), 
+        format_func=lambda x: st.session_state.my_stocks[x]
+    )
+    
+    if st.button("刪除此項目"):
+        if ticker_to_delete in st.session_state.my_stocks:
+            del st.session_state.my_stocks[ticker_to_delete]
+            st.warning(f"已刪除 {ticker_to_delete}")
+            st.rerun() # 自動重新整理
 
 # 3. 在 tab1 讀取時，改用 session_state 的資料
 with tab1:
