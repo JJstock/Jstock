@@ -81,7 +81,7 @@ with st.sidebar: # 放在側邊欄比較整潔
 with tab1:
     st.subheader("📋 監控清單總覽")
     data_list = []
-    # 這裡直接呼叫 st.session_state.my_stocks
+    # 使用 session_state 進行迴圈
     for symbol, name in st.session_state.my_stocks.items():
         d, _ = get_stock_data(symbol)
         if d:
@@ -107,7 +107,12 @@ with tab1:
         st.info("正在讀取資料，請稍候...")
     
     st.subheader("📈 個股趨勢圖")
-    selected_ticker = st.selectbox("請選擇股票", list(my_stocks.keys()), format_func=lambda x: my_stocks[x])
+    # 【關鍵修正】：這裡改用 session_state，新增的股票才會出現在下拉選單中
+    selected_ticker = st.selectbox(
+        "請選擇股票", 
+        list(st.session_state.my_stocks.keys()), 
+        format_func=lambda x: st.session_state.my_stocks[x]
+    )
     if selected_ticker:
         plot_stock_chart(selected_ticker)
 
