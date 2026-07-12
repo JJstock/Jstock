@@ -64,8 +64,8 @@ if data_list:
         df_final, 
         width=None, # 設定為 None 會讓表格自動適應螢幕寬度，而不是被強制拉伸
         column_config={
-            "現價": st.column_config.TextColumn("現價", width="small"),
-            "MA20": st.column_config.TextColumn("MA20", width="small"),
+            "現價": st.column_config.TextColumn("現價", width="medium"),
+            "MA20": st.column_config.TextColumn("MA20", width="medium"),
             "狀態": st.column_config.TextColumn("狀態", width="small"),
             "Trailing (PE/EPS)": st.column_config.TextColumn("Trailing PE/EPS", width="medium"),
             "Forward (PE/EPS)": st.column_config.TextColumn("Forward PE/EPS", width="medium"),
