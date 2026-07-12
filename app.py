@@ -75,8 +75,8 @@ with tab1:
             use_container_width=True,
             column_config={
                 "_index": st.column_config.TextColumn("股票名稱", width="medium"),
-                "現價": st.column_config.TextColumn("現價", width="medium"),
-                "MA20": st.column_config.TextColumn("MA20", width="medium"),
+                "現價": st.column_config.TextColumn("現價", width="small"),
+                "MA20": st.column_config.TextColumn("MA20", width="small"),
                 "狀態": st.column_config.TextColumn("狀態", width="small"),
                 "Trailing (PE/EPS)": st.column_config.TextColumn("Trailing PE/EPS", width="medium"),
                 "Forward (PE/EPS)": st.column_config.TextColumn("Forward PE/EPS", width="medium"),
@@ -118,8 +118,8 @@ with tab2:
         use_container_width=True,
         column_config={
             "_index": st.column_config.TextColumn("股票名稱", width="medium"),
-            "現價": st.column_config.TextColumn("現價", width="medium"),
-            "Trailing (PE/EPS)": st.column_config.TextColumn("Trailing (PE/EPS)", width="small"),
+            "現價": st.column_config.TextColumn("現價", width="small"),
+            "Trailing (PE/EPS)": st.column_config.TextColumn("Trailing (PE/EPS)", width="medium"),
             "Forward (PE/EPS)": st.column_config.TextColumn("Forward PE/EPS", width="medium"),
             "股價淨值比": st.column_config.TextColumn("股價淨值比", width="small"),
             "殖利率": st.column_config.TextColumn("殖利率", width="small"),
