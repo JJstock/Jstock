@@ -49,12 +49,18 @@ def get_stock_data(ticker):
     # 修正 f-string 引號衝突
     status = f"⚠️低於MA20 ({ma20:.2f})" if price < ma20 else f"✅高於MA20 ({ma20:.2f})"
     
+    peg = info.get('pegRatio')
+        # 若 API 沒有回傳 pegRatio，我們用公式補上計算邏輯
+    if peg is None or peg == 0:
+        growth = info.get('earningsGrowth', 0) # 假設這是一個小數 (例如 0.15 代表 15%)
+        peg = info.get('forwardPE',0) / (growth * 100) if growth and growth != 0 else 0
+        
     return {
         "現價": f"{price:.2f}",
         "狀態": status,
         "Trailing (PE/EPS)": f"{info.get('trailingPE', 0):.2f} (EPS: {info.get('trailingEps', 0):.2f})",
         "Forward (PE/EPS)": f"{info.get('forwardPE', 0):.2f} (EPS: {info.get('forwardEps', 0):.2f})",
-        "PEG":              f"{ info.get('pegRatio',0):.2f}", 
+        "PEG":              f"{peg:.2f}", 
     },df
 
 # --- 分頁內容 ---
