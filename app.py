@@ -92,15 +92,19 @@ with tab1:
 
 with tab2:
     st.subheader("🏦 金融股績效監控")
-    financial_stocks = {"2881.TW": "富邦金", "2882.TW": "國泰金","2883.TW": "凱基金", "2891.TW": "中信金"}
+    financial_stocks = {"2881.TW": "富邦金", "2882.TW": "國泰金", "2883.TW": "凱基金", "2891.TW": "中信金"}
+    
     finance_data = []
     for sym, name in financial_stocks.items():
         ticker = yf.Ticker(sym)
         info = ticker.info
-        # 整理資料
+        # 抓取最新的價格
+        hist = ticker.history(period="1d")
+        current_price = hist['Close'].iloc[-1] if not hist.empty else 0
+        
         finance_data.append({
             "名稱": f"{sym.replace('.TW', '')} {name}",
-            "現價": f"{price:.2f}",
+            "現價": f"{current_price:.2f}",
             "本益比": f"{info.get('trailingPE', 0):.2f}",
             "股價淨值比": f"{info.get('priceToBook', 0):.2f}",
             "殖利率": f"{info.get('dividendYield', 0) * 100:.2f}%" if info.get('dividendYield') else "0.00%"
