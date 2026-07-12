@@ -74,7 +74,7 @@ with tab1:
             df_final, 
             use_container_width=True,
             column_config={
-                "_index": st.column_config.TextColumn("股票名稱", width="small"),
+                "_index": st.column_config.TextColumn("股票名稱", width="medium"),
                 "現價": st.column_config.TextColumn("現價", width="medium"),
                 "MA20": st.column_config.TextColumn("MA20", width="medium"),
                 "狀態": st.column_config.TextColumn("狀態", width="small"),
@@ -117,7 +117,7 @@ with tab2:
         df_fin, 
         use_container_width=True,
         column_config={
-            "_index": st.column_config.TextColumn("股票名稱", width="small"),
+            "_index": st.column_config.TextColumn("股票名稱", width="medium"),
             "現價": st.column_config.TextColumn("現價", width="medium"),
             "Trailing (PE/EPS)": st.column_config.TextColumn("Trailing (PE/EPS)", width="small"),
             "Forward (PE/EPS)": st.column_config.TextColumn("Forward PE/EPS", width="medium"),
