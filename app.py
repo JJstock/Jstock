@@ -54,6 +54,8 @@ def get_stock_data(ticker):
         "狀態": status,
         "Trailing (PE/EPS)": f"{info.get('trailingPE', 0):.2f} (EPS: {info.get('trailingEps', 0):.2f})",
         "Forward (PE/EPS)": f"{info.get('forwardPE', 0):.2f} (EPS: {info.get('forwardEps', 0):.2f})"
+        "PEG": PEG,
+        "成長率": f"{growth*100:.2f}%"
     }, df
 
 # --- 分頁內容 ---
@@ -124,6 +126,8 @@ with tab1:
                 "狀態": st.column_config.TextColumn("狀態", width="small"),
                 "Trailing (PE/EPS)": st.column_config.TextColumn("Trailing PE/EPS", width="medium"),
                 "Forward (PE/EPS)": st.column_config.TextColumn("Forward PE/EPS", width="medium"),
+                "PEG": st.column_config.TextColumn("PEG (trail/growth)", width="small"),
+                "成長率": st.column_config.TextColumn("成長率", width="small")
             }
         )
     else:
