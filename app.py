@@ -58,15 +58,32 @@ tab1, tab2 = st.tabs(["📊 主監控頁面", "🏦 金融股財務專區"])
 with tab1:
     my_stocks = {"2330.TW": "台積電", "2454.TW": "聯發科", "2308.TW": "台達電", "2317.TW": "鴻海", "3711.TW": "日月光", "2303.TW": "聯電", "2327.TW": "國巨", "2383.TW": "台光電", "2345.TW":"智邦","3037.TW": "欣興"}
     st.subheader("📋 監控清單總覽")
+    # 確保資料抓取邏輯在 tab1 內執行
     data_list = []
     for symbol, name in my_stocks.items():
         d, _ = get_stock_data(symbol)
         if d:
-            d['名稱'] = f"{symbol.replace('.TW', '')} {name}"
+            display_name = f"{symbol.replace('.TW', '')} {name}"
+            d['名稱'] = display_name
             data_list.append(d)
-    
+
+    # 顯示表格
     if data_list:
-        st.dataframe(pd.DataFrame(data_list).set_index('名稱'), use_container_width=True)
+        df_final = pd.DataFrame(data_list).set_index('名稱')
+        st.dataframe(
+            df_final, 
+            use_container_width=True,
+            column_config={
+                "_index": st.column_config.TextColumn("股票名稱", width="medium"),
+                "現價": st.column_config.TextColumn("現價", width="medium"),
+                "MA20": st.column_config.TextColumn("MA20", width="medium"),
+                "狀態": st.column_config.TextColumn("狀態", width="small"),
+                "Trailing (PE/EPS)": st.column_config.TextColumn("Trailing PE/EPS", width="medium"),
+                "Forward (PE/EPS)": st.column_config.TextColumn("Forward PE/EPS", width="medium"),
+            }
+        )
+    else:
+        st.info("正在讀取資料，請稍候...")
     
     st.subheader("📈 個股趨勢圖")
     selected_ticker = st.selectbox("請選擇股票", list(my_stocks.keys()), format_func=lambda x: my_stocks[x])
