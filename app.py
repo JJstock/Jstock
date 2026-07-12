@@ -117,7 +117,7 @@ with tab2:
             "Trailing (PE/EPS)": f"{info.get('trailingPE', 0):.2f} (EPS: {info.get('trailingEps', 0):.2f})",
             "Forward (PE/EPS)": f"{info.get('forwardPE', 0):.2f} (EPS: {info.get('forwardEps', 0):.2f})",
             "股價淨值比": f"{info.get('priceToBook', 0):.2f}",
-            "殖利率": f"{info.get('dividendYield', 0) * 100:.2f}%" if info.get('dividendYield') else "0.00%"
+            "殖利率": f"{info.get('dividendYield', 0) :.2f}%" if info.get('dividendYield') else "0.00%"
         })
            
     # 顯示表格
