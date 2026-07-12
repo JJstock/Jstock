@@ -74,7 +74,7 @@ with tab1:
             df_final, 
             use_container_width=True,
             column_config={
-                "_index": st.column_config.TextColumn("股票名稱", width="medium"),
+                "_index": st.column_config.TextColumn("股票名稱", width="small"),
                 "現價": st.column_config.TextColumn("現價", width="medium"),
                 "MA20": st.column_config.TextColumn("MA20", width="medium"),
                 "狀態": st.column_config.TextColumn("狀態", width="small"),
@@ -92,7 +92,7 @@ with tab1:
 
 with tab2:
     st.subheader("🏦 金融股績效監控")
-    financial_stocks = {"2881.TW": "富邦金", "2882.TW": "國泰金", "2883.TW": "凱基金", "2891.TW": "中信金"}
+    financial_stocks = {"2881.TW": "富邦金", "2882.TW": "國泰金", "2883.TW": "凱基金", "2891.TW": "中信金","2885.TW": "元大金"}
     
     finance_data = []
     for sym, name in financial_stocks.items():
@@ -105,7 +105,8 @@ with tab2:
         finance_data.append({
             "名稱": f"{sym.replace('.TW', '')} {name}",
             "現價": f"{current_price:.2f}",
-            "本益比": f"{info.get('trailingPE', 0):.2f}",
+            "Trailing (PE/EPS)": f"{info.get('trailingPE', 0):.2f} (EPS: {info.get('trailingEps', 0):.2f})",
+            "Forward (PE/EPS)": f"{info.get('forwardPE', 0):.2f} (EPS: {info.get('forwardEps', 0):.2f})",
             "股價淨值比": f"{info.get('priceToBook', 0):.2f}",
             "殖利率": f"{info.get('dividendYield', 0):.2f}%" if info.get('dividendYield') else "0.00%"
         })
@@ -116,9 +117,10 @@ with tab2:
         df_fin, 
         use_container_width=True,
         column_config={
-            "_index": st.column_config.TextColumn("股票名稱", width="medium"),
+            "_index": st.column_config.TextColumn("股票名稱", width="small"),
             "現價": st.column_config.TextColumn("現價", width="medium"),
-            "本益比": st.column_config.TextColumn("本益比", width="small"),
+            "Trailing (PE/EPS)": st.column_config.TextColumn("Trailing (PE/EPS)", width="small"),
+            "Forward (PE/EPS)": st.column_config.TextColumn("Forward PE/EPS", width="medium"),
             "股價淨值比": st.column_config.TextColumn("股價淨值比", width="small"),
             "殖利率": st.column_config.TextColumn("殖利率", width="small"),
         }
