@@ -8,7 +8,33 @@ import gc
 # 1. 頁面設定
 st.set_page_config(page_title="個人股價監控", layout="wide")
 st.title("JStok 📊 MA20+60 與財報監控")
+# --- 增加分頁設定 ---
+tab1, tab2 = st.tabs(["📊 主監控頁面", "🏦 金融股財務專區"])
 
+with tab1:
+    # 這邊放入你原本的主監控代碼 (包含總覽表格)
+    st.subheader("📋 監控清單總覽")
+    # ... (放置你原本的資料抓取與 st.dataframe 邏輯)
+
+with tab2:
+    st.subheader("🏦 金融股績效監控")
+    financial_stocks = {"2881.TW": "富邦金", "2882.TW": "國泰金", "2891.TW": "中信金"}
+    
+    # 這裡顯示不一樣的表格：例如顯示股息殖利率或波動率 (假設)
+    finance_data = []
+    for sym, name in financial_stocks.items():
+        ticker = yf.Ticker(sym)
+        info = ticker.info
+        finance_data.append({
+            "名稱": name,
+            "本益比": info.get('trailingPE', 0),
+            "股價淨值比": info.get('priceToBook', 0),
+            "殖利率": f"{info.get('dividendYield', 0) * 100:.2f}%"
+        })
+    
+    st.dataframe(pd.DataFrame(finance_data), use_container_width=True)
+    
+    st.divider()
 my_stocks = {
     "2330.TW": "台積電", "2454.TW": "聯發科", "2308.TW": "台達電", 
     "2317.TW": "鴻海", "3711.TW": "日月光", "2303.TW": "聯電", 
@@ -44,33 +70,7 @@ def get_stock_data(ticker):
         "Trailing (PE/EPS)": f"{t_pe:.2f} (EPS: {t_eps:.2f})",
         "Forward (PE/EPS)": f"{f_pe:.2f} (EPS: {f_eps:.2f})"
     }, df
-# --- 增加分頁設定 ---
-tab1, tab2 = st.tabs(["📊 主監控頁面", "🏦 金融股財務專區"])
 
-with tab1:
-    # 這邊放入你原本的主監控代碼 (包含總覽表格)
-    st.subheader("📋 監控清單總覽")
-    # ... (放置你原本的資料抓取與 st.dataframe 邏輯)
-
-with tab2:
-    st.subheader("🏦 金融股績效監控")
-    financial_stocks = {"2881.TW": "富邦金", "2882.TW": "國泰金", "2891.TW": "中信金"}
-    
-    # 這裡顯示不一樣的表格：例如顯示股息殖利率或波動率 (假設)
-    finance_data = []
-    for sym, name in financial_stocks.items():
-        ticker = yf.Ticker(sym)
-        info = ticker.info
-        finance_data.append({
-            "名稱": name,
-            "本益比": info.get('trailingPE', 0),
-            "股價淨值比": info.get('priceToBook', 0),
-            "殖利率": f"{info.get('dividendYield', 0) * 100:.2f}%"
-        })
-    
-    st.dataframe(pd.DataFrame(finance_data), use_container_width=True)
-    
-    st.divider()
 # --- 總覽表格 ---
 st.subheader("📋 監控清單總覽")
 data_list = []
