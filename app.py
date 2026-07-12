@@ -156,7 +156,7 @@ with tab1:
 
 with tab2:
     st.subheader("🏦 金融股績效監控")
-    financial_stocks = {"2881.TW": "富邦金", "2882.TW": "國泰金", "2883.TW": "凱基金", "2891.TW": "中信金", "2885.TW": "元大金", "2887.TW": "台新新光金", "2890.TW": "永豐金"}
+    financial_stocks = {"2881.TW": "富邦金", "2882.TW": "國泰金", "2883.TW": "凱基金", "2884.TW": "玉山金", "2891.TW": "中信金", "2885.TW": "元大金", "2887.TW": "台新新光金", "2890.TW": "永豐金", "2889.TW": "國票金", "2834.TW": "台企銀"}
     
     finance_data = []
     for sym, name in financial_stocks.items():
