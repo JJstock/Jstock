@@ -104,9 +104,7 @@ with tab1:
 
     if data_list:
         df_final = pd.DataFrame(data_list).set_index('名稱')
-        for col in ['現價', 'Trailing (PE/EPS)', 'Forward (PE/EPS)', 'PEG', '成長率']:
-            df_final[col] = df_final[col].replace({'[*%]': ''}, regex=True)
-            df_final[col] = pd.to_numeric(df_final[col], errors='coerce')
+        
         
         st.dataframe(
             df_final,
