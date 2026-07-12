@@ -59,12 +59,30 @@ def get_stock_data(ticker):
 # --- 分頁內容 ---
 tab1, tab2 = st.tabs(["📊 主監控頁面", "🏦 金融股財務專區"])
 
+# 1. 初始化 session_state，如果還沒有清單，就先放入預設的股票
+if 'my_stocks' not in st.session_state:
+    st.session_state.my_stocks = {
+        "2330.TW": "台積電", "2454.TW": "聯發科", "2308.TW": "台達電", "2317.TW": "鴻海", "3711.TW": "日月光", "2303.TW": "聯電", "2327.TW": "國巨", "2383.TW": "台光電", "2345.TW":"智邦","3037.TW": "欣興"
+    }
+
+# 2. 在頁面中加入輸入框
+with st.sidebar: # 放在側邊欄比較整潔
+    st.subheader("➕ 新增監控股票")
+    new_ticker = st.text_input("輸入股票代號 (例如: 2317.TW)", placeholder="2317.TW")
+    new_name = st.text_input("輸入公司名稱", placeholder="鴻海")
+    
+    if st.button("加入監控清單"):
+        if new_ticker and new_name:
+            st.session_state.my_stocks[new_ticker] = new_name
+            st.success(f"已加入 {new_name}")
+            st.rerun() # 自動重新整理讓表格更新
+
+# 3. 在 tab1 讀取時，改用 session_state 的資料
 with tab1:
-    my_stocks = {"2330.TW": "台積電", "2454.TW": "聯發科", "2308.TW": "台達電", "2317.TW": "鴻海", "3711.TW": "日月光", "2303.TW": "聯電", "2327.TW": "國巨", "2383.TW": "台光電", "2345.TW":"智邦","3037.TW": "欣興"}
     st.subheader("📋 監控清單總覽")
-    # 確保資料抓取邏輯在 tab1 內執行
     data_list = []
-    for symbol, name in my_stocks.items():
+    # 這裡直接呼叫 st.session_state.my_stocks
+    for symbol, name in st.session_state.my_stocks.items():
         d, _ = get_stock_data(symbol)
         if d:
             display_name = f"{symbol.replace('.TW', '')} {name}"
