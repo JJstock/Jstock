@@ -73,31 +73,42 @@ with st.sidebar:
     st.subheader("➕ 新增監控股票")
     market_type = st.radio("選擇市場", [".TW (上市)", ".TWO (上櫃)"], horizontal=True)
     new_ticker = st.text_input("輸入股票代號", placeholder="例如: 2330")
-    new_name = st.text_input("輸入公司名稱", placeholder="例如: 台積電")
     
+    # 加入自動帶入名稱的邏輯
+    if new_ticker:
+        suffix = ".TW" if ".TW" in market_type else ".TWO"
+        full_ticker = f"{new_ticker}{suffix}"
+        
+        # 簡單的驗證：只在代號變動時嘗試抓取名稱
+        try:
+            ticker_obj = yf.Ticker(full_ticker)
+            # 嘗試取得名稱，若失敗則回傳代號本身
+            stock_name = ticker_obj.info.get('longName', '找不到名稱')
+            st.info(f"系統偵測到：{stock_name}")
+        except:
+            stock_name = ""
+    else:
+        stock_name = ""
+
     if st.button("加入監控清單"):
-    # 自動組合代號
-        if new_ticker and new_name:
+        if new_ticker:
             suffix = ".TW" if ".TW" in market_type else ".TWO"
             full_ticker = f"{new_ticker}{suffix}"
             
-            # 使用 try-except 保護主程式不崩潰
-            try:
-                with st.spinner("正在驗證股票代號..."):
-                    test_stock = yf.Ticker(full_ticker)
-                    test_hist = test_stock.history(period="5d")
-                    
-                    if not test_hist.empty:
-                        st.session_state.my_stocks[full_ticker] = new_name
-                        st.success(f"✅ 已加入 {new_name}")
-                        time.sleep(1)
-                        st.rerun()
-                    else:
-                        st.error("❌ 找不到該股票資料，請檢查代號")
-            except Exception as e:
-                st.error(f"❌ 發生錯誤: {e}")
+            # 若系統沒偵測到名稱，則設定為代號，或提示錯誤
+            final_name = stock_name if stock_name != '找不到名稱' else new_ticker
+            
+            with st.spinner("正在驗證..."):
+                test_stock = yf.Ticker(full_ticker)
+                if not test_stock.history(period="1d").empty:
+                    st.session_state.my_stocks[full_ticker] = final_name
+                    st.success(f"✅ 已成功加入 {final_name}")
+                    time.sleep(1)
+                    st.rerun()
+                else:
+                    st.error("❌ 無法取得該股票資料，請檢查代號是否正確")
         else:
-            st.warning("請填寫完整資訊")
+            st.warning("請輸入股票代號！")
     
     st.markdown("---") # 分隔線
     
