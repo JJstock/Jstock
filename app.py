@@ -87,13 +87,17 @@ with st.sidebar:
                 
                 if not test_hist.empty:
                     st.session_state.my_stocks[full_ticker] = new_name
-                    st.success(f"✅ 加入成功：{new_name} ({full_ticker})")
-                    # 使用 st.rerun() 讓畫面更新顯示新股票
-                    st.rerun()
+                    # 顯示兩秒的成功提示
+                    st.toast(f"✅ {new_name} 加入成功！", icon="🎉")
+                    import time
+                    time.sleep(2) # 強制暫停兩秒，讓使用者看清楚
+                    st.rerun() 
                 else:
-                    st.error(f"❌ 加入失敗：找不到代號 {full_ticker} 的資料，請確認代號是否正確。")
+                    st.toast(f"❌ 找不到代號 {full_ticker}，請檢查。", icon="⚠️")
+                    time.sleep(2)
             except Exception as e:
-                st.error(f"❌ 加入失敗：系統發生錯誤 ({e})")
+                st.toast(f"❌ 系統錯誤: {e}", icon="🚫")
+                time.sleep(2)
     
     st.markdown("---") # 分隔線
     
