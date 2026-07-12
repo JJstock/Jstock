@@ -85,7 +85,7 @@ with st.sidebar:
             try:
                 with st.spinner("正在驗證股票代號..."):
                     test_stock = yf.Ticker(full_ticker)
-                    test_hist = test_stock.history(period="3d")
+                    test_hist = test_stock.history(period="5d")
                     
                     if not test_hist.empty:
                         st.session_state.my_stocks[full_ticker] = new_name
