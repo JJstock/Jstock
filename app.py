@@ -68,47 +68,38 @@ tab1, tab2 = st.tabs(["📊 主監控頁面", "🏦 金農專區"])
 
 if 'my_stocks' not in st.session_state:
     st.session_state.my_stocks = {"2330.TW": "台積電", "2454.TW": "聯發科", "2308.TW": "台達電", "2317.TW": "鴻海", "3711.TW": "日月光", "2303.TW": "聯電", "2327.TW": "國巨", "2383.TW": "台光電", "2345.TW":"智邦","3037.TW": "欣興"}
-
+# 新增監控股票
 with st.sidebar:
     st.subheader("➕ 新增監控股票")
     market_type = st.radio("選擇市場", [".TW (上市)", ".TWO (上櫃)"], horizontal=True)
     new_ticker = st.text_input("輸入股票代號", placeholder="例如: 2330")
-    
-    # 加入自動帶入名稱的邏輯
-    if new_ticker:
-        suffix = ".TW" if ".TW" in market_type else ".TWO"
-        full_ticker = f"{new_ticker}{suffix}"
-        
-        # 簡單的驗證：只在代號變動時嘗試抓取名稱
-        try:
-            ticker_obj = yf.Ticker(full_ticker)
-            # 嘗試取得名稱，若失敗則回傳代號本身
-            stock_name = ticker_obj.info.get('longName', '找不到名稱')
-            st.info(f"系統偵測到：{stock_name}")
-        except:
-            stock_name = ""
-    else:
-        stock_name = ""
-
+    new_name = st.text_input("輸入公司名稱", placeholder="例如: 台積電") 
+         
+   
     if st.button("加入監控清單"):
-        if new_ticker:
+        if new_ticker and new_name:
             suffix = ".TW" if ".TW" in market_type else ".TWO"
             full_ticker = f"{new_ticker}{suffix}"
             
-            # 若系統沒偵測到名稱，則設定為代號，或提示錯誤
-            final_name = stock_name if stock_name != '找不到名稱' else new_ticker
-            
-            with st.spinner("正在驗證..."):
-                test_stock = yf.Ticker(full_ticker)
-                if not test_stock.history(period="1d").empty:
-                    st.session_state.my_stocks[full_ticker] = final_name
-                    st.success(f"✅ 已成功加入 {final_name}")
-                    time.sleep(1)
-                    st.rerun()
-                else:
-                    st.error("❌ 無法取得該股票資料，請檢查代號是否正確")
+            with st.spinner("正在驗證股票名稱..."):
+                try:
+                    # 關鍵修改：驗證核心從 history 轉為 info.get('longName')
+                    ticker_obj = yf.Ticker(full_ticker)
+                    # 取得 info 字典，若連線失敗或代號不存在會觸發 exception
+                    info_data = ticker_obj.info
+                    
+                    # 判斷有無名稱 (只要 info 有回傳且包含 symbol 或 longName 就算有效)
+                    if info_data and ('symbol' in info_data or 'longName' in info_data):
+                        st.session_state.my_stocks[full_ticker] = new_name
+                        st.success(f"✅ 已成功加入 {new_name}")
+                        time.sleep(1)
+                        st.rerun()
+                    else:
+                        st.error("❌ 無法獲取該代號的財務資訊，請確認代號是否正確。")
+                except Exception as e:
+                    st.error(f"❌ 驗證過程中發生錯誤，請檢查網路連線。")
         else:
-            st.warning("請輸入股票代號！")
+            st.warning("請輸入代號與名稱！")
     
     st.markdown("---") # 分隔線
     
