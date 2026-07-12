@@ -47,7 +47,7 @@ def get_stock_data(ticker):
     price = df['Close'].iloc[-1]
     
     # 修正 f-string 引號衝突
-    status = f"⚠️低於MA20({ma20:.2f})" if price < ma20 else f"✅高於MA20({ma20:.2f})"
+    status = f"⚠️低於MA20 ({ma20:.2f})" if price < ma20 else f"✅高於MA20 ({ma20:.2f})"
     
     return {
         "現價": f"{price:.2f}",
@@ -108,7 +108,7 @@ with tab2:
         ma20 = hist['Close'].rolling(window=20).mean().iloc[-1]
         
         # 修正 f-string 引號衝突並確保變數存在
-        status = f"⚠️低於MA20({ma20:.2f})" if current_price < ma20 else f"✅高於MA20({ma20:.2f})"
+        status = f"⚠️低於MA20 ({ma20:.2f})" if current_price < ma20 else f"✅高於MA20 ({ma20:.2f})"
         
         finance_data.append({
             "名稱": f"{sym.replace('.TW', '')} {name}",
@@ -119,10 +119,7 @@ with tab2:
             "股價淨值比": f"{info.get('priceToBook', 0):.2f}",
             "殖利率": f"{info.get('dividendYield', 0) * 100:.2f}%" if info.get('dividendYield') else "0.00%"
         })
-    
-    df_fin = pd.DataFrame(finance_data).set_index('名稱')
-    st.dataframe(df_fin, use_container_width=True)
-    
+           
     # 顯示表格
     df_fin = pd.DataFrame(finance_data).set_index('名稱')
     st.dataframe(
