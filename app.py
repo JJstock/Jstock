@@ -57,7 +57,7 @@ def get_stock_data(ticker):
     }, df
 
 # --- 分頁內容 ---
-tab1, tab2 = st.tabs(["📊 主監控頁面", "🏦 金融股財務專區"])
+tab1, tab2 = st.tabs(["📊 主監控頁面", "🏦 金農專區"])
 
 # 1. 初始化 session_state，如果還沒有清單，就先放入預設的股票
 if 'my_stocks' not in st.session_state:
