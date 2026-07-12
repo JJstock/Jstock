@@ -57,13 +57,13 @@ def get_stock_data(ticker):
         calc_peg = info.get('forwardPE',0) / (growth * 100) if growth and growth != 0 else 0
         PEG=f"{calc_peg:.2f}*"
     else:
-        PEG=f"{raw_peg:.2f}"
+        PEG=f"{raw_peg:.2f}(calc_peg)*"
     return {
         "現價": f"{price:.2f}",
         "狀態": status,
         "Trailing (PE/EPS)": f"{info.get('trailingPE', 0):.2f} (EPS: {info.get('trailingEps', 0):.2f})",
         "Forward (PE/EPS)": f"{info.get('forwardPE', 0):.2f} (EPS: {info.get('forwardEps', 0):.2f})",
-        "PEG":f"{PEG (raw_peg):.2f})", 
+        "PEG":PEG, 
     },df
 
 # --- 分頁內容 ---
