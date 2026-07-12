@@ -68,8 +68,8 @@ if 'my_stocks' not in st.session_state:
 # 2. 在頁面中加入輸入框
 with st.sidebar:
     st.subheader("➕ 新增監控股票")
-    new_ticker = st.text_input("輸入股票代號 (例如: 2317.TW)", placeholder="2317.TW")
-    new_name = st.text_input("輸入公司名稱", placeholder="鴻海")
+    new_ticker = st.text_input("輸入股票代號 (例如: 2330.TW)", placeholder="2330.TW")
+    new_name = st.text_input("輸入公司名稱", placeholder="台積電")
     
     if st.button("加入監控清單"):
         if new_ticker and new_name:
@@ -101,7 +101,7 @@ with tab1:
     for symbol, name in st.session_state.my_stocks.items():
         d, _ = get_stock_data(symbol)
         if d:
-            display_name = f"{symbol.replace('.TW', '')} {name}"
+            display_name = f"{symbol} {name}"
             d['名稱'] = display_name
             data_list.append(d)
 
