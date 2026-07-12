@@ -52,12 +52,12 @@ def get_stock_data(ticker):
     # PEG 計算邏輯
     raw_peg = info.get('pegRatio')
         # 若 API 沒有回傳 pegRatio，我們用公式補上計算邏輯
-    if raw_peg is None or raw_peg == 0:
+    # if raw_peg is None or raw_peg == 0:
         growth = info.get('earningsGrowth', 0) # 假設這是一個小數 (例如 0.15 代表 15%)
         calc_peg = info.get('forwardPE',0) / (growth * 100) if growth and growth != 0 else 0
-        PEG=f"{calc_peg:.2f}*"
-    else:
-        PEG=f"{raw_peg:.2f}({calc_peg:.2f})*"
+        PEG=f"{calc_peg:.2f}*{raw_peg}"
+    # else:
+    #     PEG=f"{raw_peg:.2f}"
     return {
         "現價": f"{price:.2f}",
         "狀態": status,
