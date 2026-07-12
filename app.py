@@ -138,9 +138,19 @@ with tab1:
             d['名稱'] = display_name
             data_list.append(d)
 
-    # 顯示表格
-    if data_list:
-        df_final = pd.DataFrame(data_list).set_index('名稱')
+    # 1. 確保 df_final 已經準備好
+df_final = pd.DataFrame(data_list).set_index('名稱')
+
+# 2. 【關鍵】將特定欄位轉為數值型態
+# 使用 pd.to_numeric，errors='coerce' 會把無法轉換的字串轉為 NaN
+# 記得先處理掉那些包含 '*' 或 '%' 的符號，否則轉換會失敗
+for col in ['現價','Trailing (PE/EPS)','Forward (PE/EPS)', 'PEG','成長率']: # 請列出你想排序的數字欄位
+    # 將可能存在的符號移除 (例如 '0.85*' -> '0.85')
+    df_final[col] = df_final[col].replace({'[*%]': ''}, regex=True)
+    # 轉為浮點數
+    df_final[col] = pd.to_numeric(df_final[col], errors='coerce')
+
+# 3. 顯示表格
         st.dataframe(
             df_final, 
             use_container_width=True,
