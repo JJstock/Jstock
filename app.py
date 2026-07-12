@@ -151,7 +151,7 @@ for col in ['現價','Trailing (PE/EPS)','Forward (PE/EPS)', 'PEG','成長率']:
     df_final[col] = pd.to_numeric(df_final[col], errors='coerce')
 
 # 3. 顯示表格
-        st.dataframe(
+    st.dataframe(
             df_final, 
             use_container_width=True,
             column_config={
