@@ -57,7 +57,7 @@ def get_stock_data(ticker):
         calc_peg = info.get('forwardPE',0) / (growth * 100) if growth and growth != 0 else 0
         PEG=f"{calc_peg:.2f}*"
     else:
-        PEG=f"{raw_peg:.2f}(calc_peg)*"
+        PEG=f"{raw_peg:.2f}({calc_peg})*"
     return {
         "現價": f"{price:.2f}",
         "狀態": status,
