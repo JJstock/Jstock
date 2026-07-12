@@ -51,7 +51,9 @@ data_list = []
 for symbol, name in my_stocks.items():
     d, _ = get_stock_data(symbol)
     if d:
-        d['名稱'] = name
+        # 將代碼中的 .TW 去掉並與名稱合併，例如：2330 + 台積電
+        display_name = f"{symbol.replace('.TW', '')} {name}"
+        d['名稱'] = display_name
         data_list.append(d)
 
 if data_list:
