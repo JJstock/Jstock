@@ -40,7 +40,24 @@ tab1, tab2 = st.tabs(["📊 主監控頁面", "🏦 金融股財務專區"])
 with tab1:
     my_stocks = {"2330.TW": "台積電", "2454.TW": "聯發科", "2308.TW": "台達電"} # 縮減示範
     st.subheader("📋 監控清單總覽")
-    # ... (放置你的資料處理邏輯)
+    if data_list:
+    df_final = pd.DataFrame(data_list).set_index('名稱')
+    
+    st.dataframe(
+        df_final, 
+        use_container_width=True, # 讓表格佔滿版面寬度
+        column_config={
+            "_index": st.column_config.TextColumn(
+                "股票名稱", 
+                width="medium"  # 將名稱欄位調整為 medium
+            ),
+            "現價": st.column_config.TextColumn("現價", width="small"),
+            "MA20": st.column_config.TextColumn("MA20", width="small"),
+            "狀態": st.column_config.TextColumn("狀態", width="small"),
+            "Trailing (PE/EPS)": st.column_config.TextColumn("Trailing PE/EPS", width="medium"),
+            "Forward (PE/EPS)": st.column_config.TextColumn("Forward PE/EPS", width="medium"),
+        }
+    )
     st.subheader("📈 個股趨勢圖")
     selected_ticker = st.selectbox("請選擇股票", list(my_stocks.keys()), format_func=lambda x: my_stocks[x])
     if selected_ticker:
@@ -49,7 +66,21 @@ with tab1:
 with tab2:
     st.subheader("🏦 金融股績效監控")
     financial_stocks = {"2881.TW": "富邦金", "2882.TW": "國泰金", "2891.TW": "中信金"}
-    # ... (放置你的金融股表格邏輯)
+    
+    # 這裡顯示不一樣的表格：例如顯示股息殖利率或波動率 (假設)
+    finance_data = []
+    for sym, name in financial_stocks.items():
+        ticker = yf.Ticker(sym)
+        info = ticker.info
+        finance_data.append({
+            "名稱": name,
+            "本益比": info.get('trailingPE', 0),
+            "股價淨值比": info.get('priceToBook', 0),
+            "殖利率": f"{info.get('dividendYield', 0) * 100:.2f}%"
+        })
+    
+    st.dataframe(pd.DataFrame(finance_data), use_container_width=True)
+    
     st.divider()
     st.subheader("📈 金融股趨勢圖")
     fin_ticker = st.selectbox("選擇金融股", list(financial_stocks.keys()), format_func=lambda x: financial_stocks[x], key="fin_select")
