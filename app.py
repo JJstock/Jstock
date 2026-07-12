@@ -6,7 +6,7 @@ from plotly.subplots import make_subplots
 import numpy as np
 import gc
 
-st.set_page_config(page_title="個人股價監控", layout="wide")
+st.set_page_config(page_title="Jstok股價監控", layout="wide")
 st.title("JStok 📊 MA20+60 與財報監控")
 
 # --- 繪圖函式 ---
@@ -56,7 +56,7 @@ def get_stock_data(ticker):
 tab1, tab2 = st.tabs(["📊 主監控頁面", "🏦 金融股財務專區"])
 
 with tab1:
-    my_stocks = {"2330.TW": "台積電", "2454.TW": "聯發科", "2308.TW": "台達電"}
+    my_stocks = {"2330.TW": "台積電", "2454.TW": "聯發科", "2308.TW": "台達電", "2317.TW": "鴻海", "3711.TW": "日月光", "2303.TW": "聯電", "2327.TW": "國巨", "2383.TW": "台光電", "2345.TW":"智邦","3037.TW": "欣興"}
     st.subheader("📋 監控清單總覽")
     data_list = []
     for symbol, name in my_stocks.items():
@@ -75,7 +75,7 @@ with tab1:
 
 with tab2:
     st.subheader("🏦 金融股績效監控")
-    financial_stocks = {"2881.TW": "富邦金", "2882.TW": "國泰金", "2891.TW": "中信金"}
+    financial_stocks = {"2881.TW": "富邦金", "2882.TW": "國泰金","2883.TW": "凱基金", "2891.TW": "中信金"}
     finance_data = []
     for sym, name in financial_stocks.items():
         ticker = yf.Ticker(sym)
