@@ -46,8 +46,7 @@ def get_stock_data(ticker):
     price = df['Close'].iloc[-1]
     return {
         "現價": f"{price:.2f}",
-        "MA20": f"{ma20:.2f}",
-        "狀態": "⚠️低於MA20" if price < ma20 else "✅高於MA20",
+        "狀態": "⚠️低於MA20( f"{ma20:.2f})" if price < ma20 else "✅高於MA20( f"{ma20:.2f})",
         "Trailing (PE/EPS)": f"{info.get('trailingPE', 0):.2f} (EPS: {info.get('trailingEps', 0):.2f})",
         "Forward (PE/EPS)": f"{info.get('forwardPE', 0):.2f} (EPS: {info.get('forwardEps', 0):.2f})"
     }, df
@@ -76,7 +75,6 @@ with tab1:
             column_config={
                 "_index": st.column_config.TextColumn("股票名稱", width="medium"),
                 "現價": st.column_config.TextColumn("現價", width="small"),
-                "MA20": st.column_config.TextColumn("MA20", width="small"),
                 "狀態": st.column_config.TextColumn("狀態", width="small"),
                 "Trailing (PE/EPS)": st.column_config.TextColumn("Trailing PE/EPS", width="medium"),
                 "Forward (PE/EPS)": st.column_config.TextColumn("Forward PE/EPS", width="medium"),
@@ -105,6 +103,7 @@ with tab2:
         finance_data.append({
             "名稱": f"{sym.replace('.TW', '')} {name}",
             "現價": f"{current_price:.2f}",
+            "狀態": "⚠️低於MA20( f"{ma20:.2f})" if price < ma20 else "✅高於MA20( f"{ma20:.2f})",
             "Trailing (PE/EPS)": f"{info.get('trailingPE', 0):.2f} (EPS: {info.get('trailingEps', 0):.2f})",
             "Forward (PE/EPS)": f"{info.get('forwardPE', 0):.2f} (EPS: {info.get('forwardEps', 0):.2f})",
             "股價淨值比": f"{info.get('priceToBook', 0):.2f}",
@@ -119,6 +118,7 @@ with tab2:
         column_config={
             "_index": st.column_config.TextColumn("股票名稱", width="medium"),
             "現價": st.column_config.TextColumn("現價", width="small"),
+            "狀態": st.column_config.TextColumn("狀態", width="small"),
             "Trailing (PE/EPS)": st.column_config.TextColumn("Trailing (PE/EPS)", width="medium"),
             "Forward (PE/EPS)": st.column_config.TextColumn("Forward PE/EPS", width="medium"),
             "股價淨值比": st.column_config.TextColumn("股價淨值比", width="small"),
