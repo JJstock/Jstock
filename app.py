@@ -254,7 +254,7 @@ with tab3:
             df_topic, 
             use_container_width=True,
             column_config={
-                "_index": st.column_config.TextColumn("股票名稱", width="medium"),
+                "_index": st.column_config.TextColumn("股票名稱", width="small"),
                 "題材": st.column_config.TextColumn("題材", width="small"), # 新增這一行
                 "現價": st.column_config.TextColumn("現價", width="small"),
                 "狀態": st.column_config.TextColumn("狀態", width="medium"),
