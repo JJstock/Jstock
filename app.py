@@ -240,7 +240,7 @@ with tab3:
         status = f"⚠️低於MA20 ({ma20:.2f})" if current_price < ma20 else f"✅高於MA20 ({ma20:.2f})"
         
         topic_data.append({
-            "名稱": f"{sym.replace('.TW', '').replace('.TWO', '')} {info_dict['名稱']}",
+            "名稱": f"{sym} {info_dict['名稱']}",
             "題材": info_dict["題材"], # 這裡正確抓取到了
             "現價": f"{current_price:.2f}",
             "狀態": status,
