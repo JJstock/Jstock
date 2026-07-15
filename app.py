@@ -76,28 +76,29 @@ with st.sidebar:
     new_name = st.text_input("輸入公司名稱", placeholder="例如: 台積電") 
          
    
-    if st.button("加入監控清單"):
+   if st.button("加入監控清單"):
         if new_ticker and new_name:
             suffix = ".TW" if ".TW" in market_type else ".TWO"
             full_ticker = f"{new_ticker}{suffix}"
             
+            # 這裡的 with 區塊
             with st.spinner("正在驗證股票代號..."):
-    try:
-        test_ticker = yf.Ticker(full_ticker)
-        # 不再依賴 info，改為驗證是否能取得最近一天的股價資料
-        hist = test_ticker.history(period="1d")
-        
-        # 只要能抓到資料，就代表這支股票存在
-        if not hist.empty:
-            st.session_state.my_stocks[full_ticker] = new_name
-            st.success(f"✅ {new_name} 加入成功！")
-            time.sleep(1)
-            st.rerun()
+                # 這裡的所有內容必須向右縮排！
+                try:
+                    test_ticker = yf.Ticker(full_ticker)
+                    hist = test_ticker.history(period="1d")
+                    
+                    if not hist.empty:
+                        st.session_state.my_stocks[full_ticker] = new_name
+                        st.success(f"✅ {new_name} 加入成功！")
+                        time.sleep(1)
+                        st.rerun()
+                    else:
+                        st.error(f"❌ 查無代號 {full_ticker}，請檢查輸入。")
+                except Exception as e:
+                    st.error(f"❌ 驗證失敗: {e}")
         else:
-            # 這裡顯示更精確的錯誤提示
-            st.error(f"❌ 查無代號 {full_ticker} 的成交資料，請確認是否輸入正確 (例如：8299.TWO)。")
-    except Exception as e:
-        st.error(f"❌ 驗證失敗: {e}")
+            st.warning("請輸入代號與名稱！")
     
     st.markdown("---") # 分隔線
     
