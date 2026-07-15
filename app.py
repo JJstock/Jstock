@@ -211,6 +211,11 @@ with tab2:
     )
     
     st.divider()
+    st.subheader("📈 題材趨勢圖")
+    # 修正：key 必須是唯一的，這裡改為 finance_select
+    finance_ticker = st.selectbox("選擇金融股", list(finance_stocks.keys()), format_func=lambda x: finance_stocks[x], key="finance_select")
+    if finance_ticker:
+        plot_stock_chart(finance_ticker)
 
 with tab3:
     st.subheader("📋 題材專區")
