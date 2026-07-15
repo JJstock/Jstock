@@ -67,7 +67,10 @@ def get_stock_data(ticker):
 tab1, tab2 = st.tabs(["📊 主監控頁面", "🏦 金農專區"])
 
 if 'my_stocks' not in st.session_state:
-    st.session_state.my_stocks = {"2330.TW": "台積電", "2454.TW": "聯發科", "2308.TW": "台達電", "2317.TW": "鴻海", "3711.TW": "日月光", "2303.TW": "聯電", "2327.TW": "國巨", "2383.TW": "台光電", "2345.TW":"智邦","3037.TW": "欣興"}
+    st.session_state.my_stocks = {
+        "2330.TW": "台積電", "2454.TW": "聯發科", "2308.TW": "台達電", "2317.TW": "鴻海", "3711.TW": "日月光", "2303.TW": "聯電", "2327.TW": "國巨", "2383.TW": "台光電", "2345.TW":"智邦","3037.TW": "欣興",
+        "3008.TW": "大立光","8922.TWO": "群聯"
+    }
 # 新增監控股票
 with st.sidebar:
     st.subheader("➕ 新增監控股票")
