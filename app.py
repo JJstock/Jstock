@@ -212,7 +212,7 @@ with tab2:
     
     st.divider()
 
-    with tab3:
+with tab3:
     st.subheader("📋 題材專區")
     topic_stocks = {"3008.TW": "大立光", "8299.TWO": "群聯"}
     topic_data = []
