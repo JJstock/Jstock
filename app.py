@@ -71,15 +71,24 @@ if 'my_stocks' not in st.session_state:
 # 新增監控股票
 with st.sidebar:
     st.subheader("➕ 新增監控股票")
-    market_type = st.radio("選擇市場", [".TW (上市)", ".TWO (上櫃)"], horizontal=True)
+    # 1. 選擇市場
+    market_type = st.radio("選擇市場", ["上市 (.TW)", "上櫃 (.TWO)"], horizontal=True)
     new_ticker = st.text_input("輸入股票代號", placeholder="例如: 2330")
     new_name = st.text_input("輸入公司名稱", placeholder="例如: 台積電")
     
-    # 確保 if 與上面的內容對齊
     if st.button("加入監控清單"):
         if new_ticker and new_name:
-            suffix = ".TW" if ".TW" in market_type else ".TWO"
+            # 【關鍵修正】：根據你的 radio 選項來判斷後綴
+            # 確保字串匹配正確
+            if "上櫃" in market_type:
+                suffix = ".TWO"
+            else:
+                suffix = ".TW"
+                
             full_ticker = f"{new_ticker}{suffix}"
+            
+            # 除錯用：這裡會顯示你實際組合出來的代號，看看到底是哪邊抓錯了
+            st.write(f"正在驗證代號: {full_ticker}")
             
             with st.spinner("正在驗證股票代號..."):
                 try:
@@ -88,11 +97,11 @@ with st.sidebar:
                     
                     if not hist.empty:
                         st.session_state.my_stocks[full_ticker] = new_name
-                        st.success(f"✅ {new_name} 加入成功！")
+                        st.success(f"✅ {new_name} ({full_ticker}) 加入成功！")
                         time.sleep(1)
                         st.rerun()
                     else:
-                        st.error(f"❌ 查無代號 {full_ticker}，請檢查輸入。")
+                        st.error(f"❌ 查無代號 {full_ticker}，請確認市場是否選對？")
                 except Exception as e:
                     st.error(f"❌ 驗證失敗: {e}")
         else:
