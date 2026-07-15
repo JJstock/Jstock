@@ -214,7 +214,10 @@ with tab2:
 
 with tab3:
     st.subheader("📋 題材專區")
-    topic_stocks = {"3008.TW": "大立光", "8299.TWO": "群聯"}
+    topic_stocks = {
+        "3008.TW": {"名稱": "大立光", "題材": "光學鏡頭"},
+        "8299.TWO": {"名稱": "群聯", "題材": "快閃記憶體"}
+    }
     topic_data = []
     
     for sym, name in topic_stocks.items():
@@ -231,6 +234,7 @@ with tab3:
         # 修正：存入實際的字串數據，而不是 column_config 物件
         topic_data.append({
             "名稱": f"{sym.replace('.TW', '').replace('.TWO', '')} {name}",
+            "題材": info_dict["題材"],
             "現價": f"{current_price:.2f}",
             "狀態": status,
             "Trailing (PE/EPS)": f"{info.get('trailingPE', 0):.2f} (EPS: {info.get('trailingEps', 0):.2f})",
