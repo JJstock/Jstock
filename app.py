@@ -69,7 +69,7 @@ tab1, tab2 = st.tabs(["📊 主監控頁面", "🏦 金農專區"])
 if 'my_stocks' not in st.session_state:
     st.session_state.my_stocks = {"2330.TW": "台積電", "2454.TW": "聯發科", "2308.TW": "台達電", "2317.TW": "鴻海", "3711.TW": "日月光", "2303.TW": "聯電", "2327.TW": "國巨", "2383.TW": "台光電", "2345.TW":"智邦","3037.TW": "欣興"}
 # 新增監控股票
-# 確保這一層是屬於 with st.sidebar: 下方的內容
+with st.sidebar:
     st.subheader("➕ 新增監控股票")
     market_type = st.radio("選擇市場", [".TW (上市)", ".TWO (上櫃)"], horizontal=True)
     new_ticker = st.text_input("輸入股票代號", placeholder="例如: 2330")
