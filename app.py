@@ -81,25 +81,23 @@ with st.sidebar:
             suffix = ".TW" if ".TW" in market_type else ".TWO"
             full_ticker = f"{new_ticker}{suffix}"
             
-            with st.spinner("正在驗證股票名稱..."):
-                try:
-                    # 關鍵修改：驗證核心從 history 轉為 info.get('longName')
-                    ticker_obj = yf.Ticker(full_ticker)
-                    # 取得 info 字典，若連線失敗或代號不存在會觸發 exception
-                    info_data = ticker_obj.info
-                    
-                    # 判斷有無名稱 (只要 info 有回傳且包含 symbol 或 longName 就算有效)
-                    if info_data and ('symbol' in info_data or 'longName' in info_data):
-                        st.session_state.my_stocks[full_ticker] = new_name
-                        st.success(f"✅ 已成功加入 {new_name}")
-                        time.sleep(1)
-                        st.rerun()
-                    else:
-                        st.error("❌ 無法獲取該代號的財務資訊，請確認代號是否正確。")
-                except Exception as e:
-                    st.error(f"❌ 驗證過程中發生錯誤，請檢查網路連線。")
+            with st.spinner("正在驗證股票代號..."):
+    try:
+        test_ticker = yf.Ticker(full_ticker)
+        # 不再依賴 info，改為驗證是否能取得最近一天的股價資料
+        hist = test_ticker.history(period="1d")
+        
+        # 只要能抓到資料，就代表這支股票存在
+        if not hist.empty:
+            st.session_state.my_stocks[full_ticker] = new_name
+            st.success(f"✅ {new_name} 加入成功！")
+            time.sleep(1)
+            st.rerun()
         else:
-            st.warning("請輸入代號與名稱！")
+            # 這裡顯示更精確的錯誤提示
+            st.error(f"❌ 查無代號 {full_ticker} 的成交資料，請確認是否輸入正確 (例如：8299.TWO)。")
+    except Exception as e:
+        st.error(f"❌ 驗證失敗: {e}")
     
     st.markdown("---") # 分隔線
     
