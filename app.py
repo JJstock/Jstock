@@ -238,7 +238,7 @@ with tab3:
         
         # 合併資訊
         row = {
-            "名稱": f"{sym.replace('.TW', '').replace('.TWO', '')} {info_dict['名稱']}", 
+            "名稱": f"{sym} {info_dict['名稱']}", 
             "題材": info_dict["題材"]
         }
         # 只合併字典部分
