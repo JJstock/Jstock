@@ -229,26 +229,14 @@ with tab3:
     
     # 修正：這裡應該用 sym, info_dict
     for sym, info_dict in topic_stocks.items():
-        ticker = yf.Ticker(sym)
-        hist = ticker.history(period="20d")
-        if hist.empty: continue
+        metrics = get_stock_data(sym) # << 直接呼叫函式取得所有資料
+        if not metrics: continue
         
-        info = ticker.info
-        current_price = hist['Close'].iloc[-1]
-        ma20 = hist['Close'].rolling(window=20).mean().iloc[-1]
-        
-        status = f"⚠️低於MA20 ({ma20:.2f})" if current_price < ma20 else f"✅高於MA20 ({ma20:.2f})"
-        
-        topic_data.append({
-            "名稱": f"{sym} {info_dict['名稱']}",
-            "題材": info_dict["題材"], # 這裡正確抓取到了
-            "現價": f"{current_price:.2f}",
-            "狀態": status,
-            "Trailing (PE/EPS)": f"{info.get('trailingPE', 0):.2f} (EPS: {info.get('trailingEps', 0):.2f})",
-            "Forward (PE/EPS)": f"{info.get('forwardPE', 0):.2f} (EPS: {info.get('forwardEps', 0):.2f})",
-            "PEG": PEG,
-            "成長率": f"{info.get('earningsGrowth', 0)*100:.2f}%"
-        })
+        # 合併資訊
+        row = {"名稱": f"{sym.replace('.TW', '').replace('.TWO', '')} {info_dict['名稱']}", 
+               "題材": info_dict["題材"]}
+        row.update(metrics) # 將抓到的資料合併進去
+        topic_data.append(row)
 
     # 顯示表格
     if topic_data:
