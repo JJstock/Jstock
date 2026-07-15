@@ -214,35 +214,36 @@ with tab2:
 
     with tab3:
     st.subheader("📋 題材專區")
-    topic_stocks = {"3008.TW": "大立光","8299.TWO": "群聯"}
+    topic_stocks = {"3008.TW": "大立光", "8299.TWO": "群聯"}
     topic_data = []
+    
     for sym, name in topic_stocks.items():
         ticker = yf.Ticker(sym)
-        hist = ticker.history(period="20d") # 為了計算 MA20，需至少取 20 天數據
+        hist = ticker.history(period="20d")
         if hist.empty: continue
         
         info = ticker.info
         current_price = hist['Close'].iloc[-1]
         ma20 = hist['Close'].rolling(window=20).mean().iloc[-1]
         
-        # 修正 f-string 引號衝突並確保變數存在
         status = f"⚠️低於MA20 ({ma20:.2f})" if current_price < ma20 else f"✅高於MA20 ({ma20:.2f})"
         
+        # 修正：存入實際的字串數據，而不是 column_config 物件
         topic_data.append({
-            "名稱": f"{sym.replace('.TW', '')} {name}",
+            "名稱": f"{sym.replace('.TW', '').replace('.TWO', '')} {name}",
             "現價": f"{current_price:.2f}",
             "狀態": status,
             "Trailing (PE/EPS)": f"{info.get('trailingPE', 0):.2f} (EPS: {info.get('trailingEps', 0):.2f})",
             "Forward (PE/EPS)": f"{info.get('forwardPE', 0):.2f} (EPS: {info.get('forwardEps', 0):.2f})",
-            "PEG": st.column_config.TextColumn("PEG (trail/growth)", width="small"),
-            "成長率": st.column_config.TextColumn("成長率", width="small") 
+            "PEG": f"{info.get('pegRatio', 0):.2f}",
+            "成長率": f"{info.get('earningsGrowth', 0)*100:.2f}%"
         })
 
     # 顯示表格
-    if data_list:
-        df_final = pd.DataFrame(data_list).set_index('名稱')
+    if topic_data:
+        df_topic = pd.DataFrame(topic_data).set_index('名稱')
         st.dataframe(
-            df_final, 
+            df_topic, 
             use_container_width=True,
             column_config={
                 "_index": st.column_config.TextColumn("股票名稱", width="medium"),
@@ -250,24 +251,15 @@ with tab2:
                 "狀態": st.column_config.TextColumn("狀態", width="medium"),
                 "Trailing (PE/EPS)": st.column_config.TextColumn("Trailing PE/EPS", width="medium"),
                 "Forward (PE/EPS)": st.column_config.TextColumn("Forward PE/EPS", width="medium"),
-                "PEG": st.column_config.TextColumn("PEG (trail/growth)", width="small"),
+                "PEG": st.column_config.TextColumn("PEG", width="small"),
                 "成長率": st.column_config.TextColumn("成長率", width="small")
             }
         )
     else:
         st.info("正在讀取資料，請稍候...")
     
-    st.subheader("📈 個股趨勢圖")
-    # 【關鍵修正】：這裡改用 session_state，新增的股票才會出現在下拉選單中
-    selected_ticker = st.selectbox(
-        "請選擇股票", 
-        list(st.session_state.my_stocks.keys()), 
-        format_func=lambda x: st.session_state.my_stocks[x]
-    )
-    if selected_ticker:
-        plot_stock_chart(selected_ticker)
-    
     st.subheader("📈 題材趨勢圖")
-    fin_ticker = st.selectbox("選擇題材股", list(financial_stocks.keys()), format_func=lambda x: financial_stocks[x], key="fin_select")
-    if fin_ticker:
-        plot_stock_chart(fin_ticker)
+    # 修正：key 必須是唯一的，這裡改為 topic_select
+    topic_ticker = st.selectbox("選擇題材股", list(topic_stocks.keys()), format_func=lambda x: topic_stocks[x], key="topic_select")
+    if topic_ticker:
+        plot_stock_chart(topic_ticker)
