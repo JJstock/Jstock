@@ -227,15 +227,20 @@ with tab3:
     }
     topic_data = []
     
-    # 修正：這裡應該用 sym, info_dict
+    # 修正後的 tab3 迴圈
     for sym, info_dict in topic_stocks.items():
-        metrics = get_stock_data(sym) # << 直接呼叫函式取得所有資料
-        if not metrics: continue
+        metrics = get_stock_data(sym)
+        
+        # 【關鍵檢查】：如果 metrics 是 None，我們就跳過這次迴圈，不要去執行 update
+        if metrics is None:
+            continue
         
         # 合併資訊
-        row = {"名稱": f"{sym.replace('.TW', '').replace('.TWO', '')} {info_dict['名稱']}", 
-               "題材": info_dict["題材"]}
-        row.update(metrics) # 將抓到的資料合併進去
+        row = {
+            "名稱": f"{sym.replace('.TW', '').replace('.TWO', '')} {info_dict['名稱']}", 
+            "題材": info_dict["題材"]
+        }
+        row.update(metrics) # 這裡確保 metrics 已經不是 None 了
         topic_data.append(row)
 
     # 顯示表格
