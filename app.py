@@ -229,10 +229,11 @@ with tab3:
     
     # 修正後的 tab3 迴圈
     for sym, info_dict in topic_stocks.items():
-        metrics = get_stock_data(sym)
+        # 接收兩個回傳值 (metrics_dict, df)
+        metrics_dict, df = get_stock_data(sym)
         
-        # 【關鍵檢查】：如果 metrics 是 None，我們就跳過這次迴圈，不要去執行 update
-        if metrics is None:
+        # 【關鍵檢查】：檢查第一個回傳值是否為空
+        if metrics_dict is None:
             continue
         
         # 合併資訊
@@ -240,7 +241,8 @@ with tab3:
             "名稱": f"{sym.replace('.TW', '').replace('.TWO', '')} {info_dict['名稱']}", 
             "題材": info_dict["題材"]
         }
-        row.update(metrics) # 這裡確保 metrics 已經不是 None 了
+        # 只合併字典部分
+        row.update(metrics_dict) 
         topic_data.append(row)
 
     # 顯示表格
