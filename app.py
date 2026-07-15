@@ -224,7 +224,8 @@ with tab3:
     }
     topic_data = []
     
-    for sym, name in topic_stocks.items():
+    # 修正：這裡應該用 sym, info_dict
+    for sym, info_dict in topic_stocks.items():
         ticker = yf.Ticker(sym)
         hist = ticker.history(period="20d")
         if hist.empty: continue
@@ -235,10 +236,9 @@ with tab3:
         
         status = f"⚠️低於MA20 ({ma20:.2f})" if current_price < ma20 else f"✅高於MA20 ({ma20:.2f})"
         
-        # 修正：存入實際的字串數據，而不是 column_config 物件
         topic_data.append({
-            "名稱": f"{sym.replace('.TW', '').replace('.TWO', '')} {name}",
-            "題材": info_dict["題材"],
+            "名稱": f"{sym.replace('.TW', '').replace('.TWO', '')} {info_dict['名稱']}",
+            "題材": info_dict["題材"], # 這裡正確抓取到了
             "現價": f"{current_price:.2f}",
             "狀態": status,
             "Trailing (PE/EPS)": f"{info.get('trailingPE', 0):.2f} (EPS: {info.get('trailingEps', 0):.2f})",
@@ -255,6 +255,7 @@ with tab3:
             use_container_width=True,
             column_config={
                 "_index": st.column_config.TextColumn("股票名稱", width="medium"),
+                "題材": st.column_config.TextColumn("題材", width="small"), # 新增這一行
                 "現價": st.column_config.TextColumn("現價", width="small"),
                 "狀態": st.column_config.TextColumn("狀態", width="medium"),
                 "Trailing (PE/EPS)": st.column_config.TextColumn("Trailing PE/EPS", width="medium"),
@@ -267,7 +268,12 @@ with tab3:
         st.info("正在讀取資料，請稍候...")
     
     st.subheader("📈 題材趨勢圖")
-    # 修正：key 必須是唯一的，這裡改為 topic_select
-    topic_ticker = st.selectbox("選擇題材股", list(topic_stocks.keys()), format_func=lambda x: topic_stocks[x], key="topic_select")
+    # 修正：format_func 也要對應調整，因為現在的 value 是字典
+    topic_ticker = st.selectbox(
+        "選擇題材股", 
+        list(topic_stocks.keys()), 
+        format_func=lambda x: topic_stocks[x]["名稱"], 
+        key="topic_select"
+    )
     if topic_ticker:
         plot_stock_chart(topic_ticker)
