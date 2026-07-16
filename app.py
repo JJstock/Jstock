@@ -280,26 +280,18 @@ with tab3:
         
 with tab4:
     st.subheader("📁 上傳每月營收數據")
-    uploaded_file = st.file_uploader("請上傳 CSV 檔案", type=['csv'])
+    uploaded_file = st.file_uploader("請上傳證交所格式的 CSV 檔案", type=['csv'])
     
     if uploaded_file is not None:
         try:
-            # 1. 將上傳的檔案內容讀取為位元組 (bytes)
-            file_bytes = uploaded_file.getvalue()
+            # 1. 關鍵調整：header=0 讀取標題，但實際上我們的標題在第 1 行 (Python 從 0 開始算)
+            # 使用 encoding='big5' 是正確的，因為這是證交所的標準
+            raw_df = pd.read_csv(uploaded_file, encoding='big5', header=1)
             
-            # 2. 使用 io.BytesIO 將位元組包裝成檔案物件，並指定編碼直接讀取
-            # 這能避開檔案路徑路徑問題，並處理編碼錯誤
-            import io
-            raw_df = pd.read_csv(io.BytesIO(file_bytes), encoding='big5', header=1, errors='ignore')
-            
-            # 3. 清理欄位名稱
+            # 2. 清理名稱：移除標題行前後可能存在的空格
             raw_df.columns = raw_df.columns.str.strip()
             
-            # 偵錯：印出欄位名稱，確認是否讀取成功
-            st.write("系統識別到的欄位名稱：", raw_df.columns.tolist())
-            
-            # 4. 定義 mapping，直接對應證交所的標準標題
-            # 注意：請確保 Key 的名稱與上方偵錯清單中的名稱完全一致
+            # 3. 建立映射 (直接對應你上傳檔案中的確切標題名稱)
             mapping = {
                 '公司代號': '代號',
                 '公司名稱': '名稱',
@@ -308,28 +300,35 @@ with tab4:
                 '累計營業收入-前期比較增減(%)': '累計年增率(%)'
             }
             
+            # 重新命名欄位，並過濾出我們需要的
             df = raw_df.rename(columns=mapping)
+            cols_to_keep = ['代號', '名稱', '月增率(MoM%)', '年增率(YoY%)', '累計年增率(%)']
+            # 只選取在 mapping 中定義且實際存在的欄位
+            existing_cols = [c for c in cols_to_keep if c in df.columns]
+            df = df[existing_cols]
             
-            # 5. 確保資料轉為數字 (處理 '-' 或空值)
+            # 4. 數據清理：將百分比字串處理為數值
             for col in ['月增率(MoM%)', '年增率(YoY%)', '累計年增率(%)']:
                 if col in df.columns:
-                    df[col] = pd.to_numeric(df[col].astype(str).str.replace(',', ''), errors='coerce')
+                    # 去除 ',' 並將 '-' 轉為 0
+                    df[col] = df[col].astype(str).str.replace(',', '').replace('-', '0')
+                    df[col] = pd.to_numeric(df[col], errors='coerce')
             
             st.session_state.revenue_data = df
-            st.success("資料已成功載入！")
+            st.success("成功載入！")
             
         except Exception as e:
-            st.error(f"讀取過程發生錯誤：{e}")
+            st.error(f"讀取失敗，請檢查格式：{e}")
 
-    # 顯示部分
+    # 5. 顯示結果
     if 'revenue_data' in st.session_state:
         df = st.session_state.revenue_data
         
-        # 篩選邏輯：檢查欄位是否存在
-        if all(c in df.columns for c in ['年增率(YoY%)', '月增率(MoM%)']):
-            st.write("### 📈 營收強勢成長股清單")
-            strong_growth = df[(df['年增率(YoY%)'] > 20) & (df['月增率(MoM%)'] > 5)].dropna(subset=['年增率(YoY%)'])
+        # 篩選成長股 (需確認欄位存在)
+        if '年增率(YoY%)' in df.columns:
+            st.write("### 📈 營收強勢成長股")
+            strong_growth = df[(df['年增率(YoY%)'] > 20)].dropna()
             st.dataframe(strong_growth, use_container_width=True)
-            
+        
         st.subheader("📋 詳細營收數據")
         st.dataframe(df, use_container_width=True)
