@@ -307,19 +307,25 @@ with tab4:
 
     @st.cache_data(ttl=3600)
     def fetch_and_merge_github_data():
-        urls = [
-            "https://raw.githubusercontent.com/JJstock/Jstock/refs/heads/main/TW.csv",
-            "https://raw.githubusercontent.com/JJstock/Jstock/refs/heads/main/TWO.csv"
+        # 標記各檔案來源對應的後綴
+        sources = [
+            {"url": "https://raw.githubusercontent.com/JJstock/Jstock/refs/heads/main/TW.csv", "suffix": ".TW"},
+            {"url": "https://raw.githubusercontent.com/JJstock/Jstock/refs/heads/main/TWO.csv", "suffix": ".TWO"}
         ]
         all_dfs = []
-        for url in urls:
+        for src in sources:
             try:
-                response = requests.get(url, timeout=15)
+                response = requests.get(src["url"], timeout=15)
                 response.raise_for_status()
                 df = read_twse_csv_from_bytes(response.content)
+
+                # 在公司代號後面加上來源後綴（.TW 或 .TWO）
+                if '公司代號' in df.columns:
+                    df['公司代號'] = df['公司代號'].astype(str).str.strip() + src["suffix"]
+
                 all_dfs.append(df)
             except Exception as e:
-                st.warning(f"讀取 {url} 失敗: {e}")
+                st.warning(f"讀取 {src['url']} 失敗: {e}")
         return pd.concat(all_dfs, ignore_index=True) if all_dfs else pd.DataFrame()
 
     # 按鈕：手動同步資料
@@ -355,8 +361,10 @@ with tab4:
                     cols_to_keep = ['代號', '名稱', '月增率(MoM%)', '年增率(YoY%)', '累計年增率(%)']
                     df = df[[c for c in cols_to_keep if c in df.columns]]
 
-                    # 剔除頁尾備註等非資料列（代號不是數字的列）
-                    df = df[pd.to_numeric(df['代號'], errors='coerce').notna()]
+                    # 剔除頁尾備註等非資料列
+                    # 注意：代號現在是 "1101.TW" 這種格式，所以要先去掉後綴再判斷是否為數字
+                    code_numeric_part = df['代號'].astype(str).str.replace(r'\.(TW|TWO)$', '', regex=True)
+                    df = df[pd.to_numeric(code_numeric_part, errors='coerce').notna()]
 
                     # 數據清理：強制轉為數值格式（處理 -、--、全形－ 等空值標記）
                     for col in ['月增率(MoM%)', '年增率(YoY%)', '累計年增率(%)']:
