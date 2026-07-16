@@ -279,168 +279,69 @@ with tab3:
         plot_stock_chart(topic_ticker)
       
 with tab4:
-    st.write("### 📊 上市櫃6月營收")
+# 1. 定義資料抓取函式 (使用官方 OpenAPI)
+@st.cache_data(ttl=3600)  # 每小時更新一次快取，避免重複請求
+def fetch_twse_data():
+    url = "https://openapi.twse.com.tw/v1/opendata/t187ap05_L"
+    try:
+        response = requests.get(url, timeout=15)
+        response.raise_for_status()
+        data = response.json()
+        return pd.DataFrame(data)
+    except Exception as e:
+        st.error(f"讀取官方資料失敗: {e}")
+        return pd.DataFrame()
 
-    import requests
-    from io import StringIO
+# 頁面主邏輯
+st.write("### 📊 上市公司營收監測系統")
 
-    def read_twse_csv_from_bytes(content_bytes):
-        """
-        依序嘗試常見編碼，並自動偵測標題列位置：
-        - 有些版本第一行就是標題（header=0）
-        - 有些版本第一行是說明文字，第二行才是標題（header=1）
-        判斷依據：讀進來的欄位中是否包含「公司代號」
-        """
-        last_err = None
-        for enc in ['utf-8-sig', 'big5', 'cp950']:
-            for header_row in [0, 1]:
-                try:
-                    decoded_text = content_bytes.decode(enc)
-                    tmp = pd.read_csv(StringIO(decoded_text), header=header_row)
-                    tmp.columns = tmp.columns.str.strip().str.replace('\u3000', '', regex=False)
-                    if '公司代號' in tmp.columns:
-                        return tmp
-                except (UnicodeDecodeError, UnicodeError, Exception) as e:
-                    last_err = e
-                    continue
-        raise ValueError(f"無法辨識檔案格式（已嘗試多種編碼與標題列位置）：{last_err}")
+df = fetch_twse_data()
 
-    @st.cache_data(ttl=3600)
-    def fetch_and_merge_github_data():
-        # 標記各檔案來源對應的後綴
-        sources = [
-            {"url": "https://raw.githubusercontent.com/JJstock/Jstock/refs/heads/main/TW.csv", "suffix": ".TW"},
-            {"url": "https://raw.githubusercontent.com/JJstock/Jstock/refs/heads/main/TWO.csv", "suffix": ".TWO"}
-        ]
-        all_dfs = []
-        for src in sources:
-            try:
-                response = requests.get(src["url"], timeout=15)
-                response.raise_for_status()
-                df = read_twse_csv_from_bytes(response.content)
+if not df.empty:
+    # 2. 欄位更名對應
+    mapping = {
+        '營業收入-上月比較增減(%)': '月增率(MoM%)',
+        '營業收入-去年同月增減(%)': '年增率(YoY%)',
+        '累計營業收入-前期比較增減(%)': '累計年增率(%)'
+    }
+    df = df.rename(columns=mapping)
 
-                # 在公司代號後面加上來源後綴（.TW 或 .TWO）
-                if '公司代號' in df.columns:
-                    df['公司代號'] = df['公司代號'].astype(str).str.strip() + src["suffix"]
+    # 3. 數據清理 (將 "--" 或空值轉換為 0)
+    cols_to_check = ['年增率(YoY%)', '月增率(MoM%)', '累計年增率(%)']
+    for col in cols_to_check:
+        if col in df.columns:
+            df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
 
-                all_dfs.append(df)
-            except Exception as e:
-                st.warning(f"讀取 {src['url']} 失敗: {e}")
-        return pd.concat(all_dfs, ignore_index=True) if all_dfs else pd.DataFrame()
-
-    # 按鈕：手動同步資料
-    col1, col2 = st.columns([1, 3])
+    # 4. 互動介面：篩選門檻
+    col1, col2 = st.columns(2)
     with col1:
-        sync_clicked = st.button("🔄 同步最新營收資料", key="sync_revenue_btn")
+        yoy_threshold = st.slider("年增率門檻 (%)", 0, 200, 20, step=5)
     with col2:
-        if 'revenue_data' in st.session_state:
-            st.caption(f"✅ 目前已載入 {len(st.session_state.revenue_data)} 筆資料")
+        mom_threshold = st.slider("月增率門檻 (%)", -50, 100, 5, step=5)
 
-    if sync_clicked:
-        with st.spinner("正在下載並解析資料..."):
-            try:
-                raw_df = fetch_and_merge_github_data()
+    # 5. 執行篩選邏輯
+    condition = (
+        (df['年增率(YoY%)'] > yoy_threshold) & 
+        (df['月增率(MoM%)'] > mom_threshold) & 
+        (df['累計年增率(%)'] > 0)
+    )
+    
+    strong_growth = df[condition].sort_values('年增率(YoY%)', ascending=False)
 
-                if not raw_df.empty:
-                    # 欄位映射
-                    mapping = {
-                        '公司代號': '代號',
-                        '公司名稱': '名稱',
-                        '營業收入-上月比較增減(%)': '月增率(MoM%)',
-                        '營業收入-去年同月增減(%)': '年增率(YoY%)',
-                        '累計營業收入-前期比較增減(%)': '累計年增率(%)'
-                    }
-                    df = raw_df.rename(columns=mapping)
+    # 6. 顯示結果
+    st.caption(f"共符合 {len(strong_growth)} 筆（篩選條件：年增率 > {yoy_threshold}%，月增率 > {mom_threshold}%，累計年增率 > 0%）")
+    
+    # 篩選要顯示的欄位，讓畫面更清爽
+    display_cols = ['公司代號', '公司名稱', '年增率(YoY%)', '月增率(MoM%)', '累計年增率(%)']
+    st.dataframe(strong_growth[display_cols], use_container_width=True, hide_index=True)
 
-                    if '代號' not in df.columns:
-                        st.error("找不到 '代號' 欄位，請檢查 CSV 的欄位名稱是否正確。")
-                        st.write("讀取到的欄位名稱為：", raw_df.columns.tolist())
-                        st.stop()
+    # 7. 加入下載功能
+    csv = strong_growth.to_csv(index=False).encode('utf-8-sig')
+    st.download_button("📥 下載篩選結果 CSV", data=csv, file_name="growth_stocks.csv", mime="text/csv")
 
-                    # 篩選欄位
-                    cols_to_keep = ['代號', '名稱', '月增率(MoM%)', '年增率(YoY%)', '累計年增率(%)']
-                    df = df[[c for c in cols_to_keep if c in df.columns]]
+else:
+    st.warning("目前暫無資料，請稍後再試。")
 
-                    # 剔除頁尾備註等非資料列
-                    # 注意：代號現在是 "1101.TW" 這種格式，所以要先去掉後綴再判斷是否為數字
-                    code_numeric_part = df['代號'].astype(str).str.replace(r'\.(TW|TWO)$', '', regex=True)
-                    df = df[pd.to_numeric(code_numeric_part, errors='coerce').notna()]
-
-                    # 數據清理：強制轉為數值格式（處理 -、--、全形－ 等空值標記）
-                    for col in ['月增率(MoM%)', '年增率(YoY%)', '累計年增率(%)']:
-                        if col in df.columns:
-                            df[col] = (
-                                df[col].astype(str)
-                                .str.strip()
-                                .str.replace(',', '', regex=False)
-                                .replace(r'^-+$', '0', regex=True)
-                            )
-                            df[col] = pd.to_numeric(df[col], errors='coerce')
-
-                    # 去除重複代號（保留第一筆）
-                    df = df.drop_duplicates(subset='代號', keep='first').reset_index(drop=True)
-
-                    st.session_state.revenue_data = df
-                    st.success(f"成功載入！共 {len(df)} 筆公司資料。")
-                else:
-                    st.error("未能讀取任何數據。")
-            except Exception as e:
-                st.error(f"同步過程發生錯誤：{e}")
-
-# 顯示結果
-    if 'revenue_data' in st.session_state:
-        df = st.session_state.revenue_data
-
-        st.divider()
-        st.write("### 📈 營收強勢成長股清單")
-
-        # 可調整篩選門檻
-        c1, c2 = st.columns(2)
-        with c1:
-            yoy_threshold = st.slider("年增率門檻 (%)", 0, 200, 20, step=5, key="yoy_slider")
-        with c2:
-            mom_threshold = st.slider("月增率門檻 (%)", -50, 100, 5, step=5, key="mom_slider")
-
-        # 1. 篩選與排序邏輯 (確保這裡向右縮排 8 個空格，與上方的 if 對齊)
-        strong_growth = df[
-            (df['年增率(YoY%)'] > yoy_threshold) &
-            (df['月增率(MoM%)'] > mom_threshold)
-        ].dropna(subset=['年增率(YoY%)']).sort_values('年增率(YoY%)', ascending=False)
-
-        st.caption(f"共符合 {len(strong_growth)} 筆（年增率 > {yoy_threshold}% 且 月增率 > {mom_threshold}%）")
-
-        # 2. 定義上色函式 (定義在函式內或上方皆可)
-        def highlight_negative(val):
-            color = 'red' if val < 0 else 'black'
-            return f'color: {color}'
-
-        # 3. 建立 Styler 物件並應用樣式
-        styled_df = strong_growth.style.map(
-            highlight_negative, 
-            subset=['年增率(YoY%)', '月增率(MoM%)']
-        )
-
-        # 4. 顯示表格
-        st.dataframe(
-            styled_df,
-            use_container_width=True,
-            hide_index=True,
-            column_config={
-                "年增率(YoY%)": st.column_config.NumberColumn("年增率(YoY%)", format="%.2f%%"),
-                "月增率(MoM%)": st.column_config.NumberColumn("月增率(MoM%)", format="%.2f%%")
-            }
-        )
-
-        # 下載按鈕
-        csv = strong_growth.to_csv(index=False).encode('utf-8-sig')
-        st.download_button(
-            label="📥 下載篩選結果 CSV",
-            data=csv,
-            file_name="strong_growth_stocks.csv",
-            mime="text/csv"
-        )
-    else:
-        st.info("👆 請先點擊上方按鈕載入資料")
 
 with tab5:
     st.write("### 📊 EPS查詢")
