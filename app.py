@@ -279,48 +279,39 @@ with tab3:
         plot_stock_chart(topic_ticker)
 
         
+import streamlit as st
+import pandas as pd
+
 with tab4:
-    @st.cache_data(ttl=3600) # 快取一小時，避免重複請求
-def fetch_data_from_github():
-    # 將下方的 URL 換成你剛剛複製的 Raw 連結
-    url ={ "https://raw.githubusercontent.com/JJstock/Jstock/refs/heads/main/TW.csv",
-           "https://raw.githubusercontent.com/JJstock/Jstock/refs/heads/main/TWO.csv"
-         }
-    
-    # 直接讀取 (與處理上傳檔案的方式相同)
-    raw_df = pd.read_csv(url, encoding='big5', header=1)
-    raw_df.columns = raw_df.columns.str.strip()
-    return raw_df
+    st.subheader("🌐 GitHub 營收數據中心")
 
-    # 讀取並處理
-    raw_df = fetch_data_from_github()
+    @st.cache_data(ttl=3600)
+    def fetch_and_merge_github_data():
+        urls = [
+            "https://raw.githubusercontent.com/JJstock/Jstock/refs/heads/main/TW.csv",
+            "https://raw.githubusercontent.com/JJstock/Jstock/refs/heads/main/TWO.csv"
+        ]
+        all_dfs = []
+        for url in urls:
+            try:
+                # 證交所資料通常 header=1
+                df = pd.read_csv(url, encoding='big5', header=1)
+                all_dfs.append(df)
+            except Exception as e:
+                st.warning(f"讀取 {url} 失敗: {e}")
+        
+        # 合併兩個 CSV
+        merged_df = pd.concat(all_dfs, ignore_index=True)
+        # 清理標題欄位
+        merged_df.columns = merged_df.columns.str.strip().str.replace('\u3000', '', regex=False)
+        return merged_df
 
-    # 定義自動偵測檔案格式的強大函式
-    def read_twse_csv(file):
-        last_err = None
-        for enc in ['utf-8-sig', 'big5', 'cp950']:
-            for header_row in [0, 1]:
-                try:
-                    file.seek(0)
-                    tmp = pd.read_csv(file, encoding=enc, header=header_row)
-                    # 清理欄位中的全形空白與控制字元
-                    tmp.columns = tmp.columns.str.strip().str.replace('\u3000', '', regex=False)
-                    if '公司代號' in tmp.columns:
-                        return tmp
-                except Exception as e:
-                    last_err = e
-                    continue
-        raise ValueError(f"無法辨識檔案格式：{last_err}")
-
-    if uploaded_file is not None:
+    # 按鈕觸發載入
+    if st.button("🔄 同步 GitHub 最新營收數據"):
         try:
-            # 1. 自動偵測並讀取
-            raw_df = read_twse_csv(uploaded_file)
-
-            # 2. 清理標題名稱
-            raw_df.columns = raw_df.columns.str.strip().str.replace('\u3000', '', regex=False)
-
-            # 3. 欄位對應與篩選
+            raw_df = fetch_and_merge_github_data()
+            
+            # 欄位映射
             mapping = {
                 '公司代號': '代號',
                 '公司名稱': '名稱',
@@ -329,33 +320,31 @@ def fetch_data_from_github():
                 '累計營業收入-前期比較增減(%)': '累計年增率(%)'
             }
             df = raw_df.rename(columns=mapping)
-            cols_to_keep = ['代號', '名稱', '月增率(MoM%)', '年增率(YoY%)', '累計年增率(%)']
-            df = df[[c for c in cols_to_keep if c in df.columns]]
-
-            # 4. 剔除無效列 (排除備註行)
+            
+            # 選取欄位並清理數值
+            cols = ['代號', '名稱', '月增率(MoM%)', '年增率(YoY%)', '累計年增率(%)']
+            df = df[[c for c in cols if c in df.columns]]
             df = df[pd.to_numeric(df['代號'], errors='coerce').notna()]
-
-            # 5. 數值清理
+            
             for col in ['月增率(MoM%)', '年增率(YoY%)', '累計年增率(%)']:
                 if col in df.columns:
-                    df[col] = df[col].astype(str).str.replace(',', '').replace(r'^-+$', '0', regex=True)
-                    df[col] = pd.to_numeric(df[col], errors='coerce')
-
+                    df[col] = pd.to_numeric(df[col].astype(str).str.replace(',', '').replace(r'^-+$', '0', regex=True), errors='coerce')
+            
             st.session_state.revenue_data = df
-            st.success(f"成功載入！共 {len(df)} 筆公司資料。")
-
+            st.success(f"成功合併載入！共 {len(df)} 筆公司資料。")
         except Exception as e:
-            st.error(f"讀取失敗：{e}")
+            st.error(f"同步失敗：{e}")
 
-    # 6. 顯示結果
+    # 顯示與上傳部分 (保留讓使用者仍可上傳自己的檔案)
+    uploaded_file = st.file_uploader("或者：請上傳本地 CSV 檔案", type=['csv'])
+    # ... (此處可沿用你原先處理 uploaded_file 的邏輯) ...
+
+    # 顯示分析結果
     if 'revenue_data' in st.session_state:
         df = st.session_state.revenue_data
-        
-        if all(c in df.columns for c in ['年增率(YoY%)', '月增率(MoM%)']):
-            st.write("📈 營收強勢成長股清單")
-            strong_growth = df[(df['年增率(YoY%)'] > 20) & (df['月增率(MoM%)'] > 5)].dropna(subset=['年增率(YoY%)'])
-            st.caption(f"共符合 {len(strong_growth)} 筆")
-            st.dataframe(strong_growth, use_container_width=True, hide_index=True)
+        st.write("### 📈 營收強勢成長股清單")
+        strong_growth = df[(df['年增率(YoY%)'] > 20) & (df['月增率(MoM%)'] > 5)].dropna(subset=['年增率(YoY%)'])
+        st.dataframe(strong_growth, use_container_width=True, hide_index=True)
 
         # st.subheader("📋 詳細營收數據")
         # st.dataframe(df, use_container_width=True)
