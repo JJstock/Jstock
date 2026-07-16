@@ -284,17 +284,14 @@ with tab4:
     
     if uploaded_file is not None:
         try:
-            # 1. 關鍵調整：header=0 讀取標題，但實際上我們的標題在第 1 行 (Python 從 0 開始算)
+            # 1. 讀取 CSV：header=1 跳過第一行說明文字，使用 big5 編碼
+            # 注意：在舊版 Pandas 中若報錯，這裡已移除 errors='ignore' 以保持最大相容性
+            raw_df = pd.read_csv(uploaded_file, encoding='big5', header=1)
             
-raw_df = pd.read_csv(uploaded_file, encoding='big5', header=1, errors='ignore')
-
-# 剩下的就是針對欄位做對應即可
-raw_df.columns = raw_df.columns.str.strip()
-            
-            # 2. 清理名稱：移除標題行前後可能存在的空格
+            # 2. 清理標題名稱：去除前後隱藏空格
             raw_df.columns = raw_df.columns.str.strip()
             
-            # 3. 建立映射 (直接對應你上傳檔案中的確切標題名稱)
+            # 3. 建立映射並選取欄位
             mapping = {
                 '公司代號': '代號',
                 '公司名稱': '名稱',
@@ -303,18 +300,16 @@ raw_df.columns = raw_df.columns.str.strip()
                 '累計營業收入-前期比較增減(%)': '累計年增率(%)'
             }
             
-            # 重新命名欄位，並過濾出我們需要的
+            # 重新命名並篩選存在的欄位
             df = raw_df.rename(columns=mapping)
             cols_to_keep = ['代號', '名稱', '月增率(MoM%)', '年增率(YoY%)', '累計年增率(%)']
-            # 只選取在 mapping 中定義且實際存在的欄位
-            existing_cols = [c for c in cols_to_keep if c in df.columns]
-            df = df[existing_cols]
+            df = df[[c for c in cols_to_keep if c in df.columns]]
             
-            # 4. 數據清理：將百分比字串處理為數值
+            # 4. 數據清理：強制轉為數值格式
             for col in ['月增率(MoM%)', '年增率(YoY%)', '累計年增率(%)']:
                 if col in df.columns:
-                    # 去除 ',' 並將 '-' 轉為 0
-                    df[col] = df[col].astype(str).str.replace(',', '').replace('-', '0')
+                    # 去除逗號與特殊符號，將錯誤格式轉為 NaN 後統一處理
+                    df[col] = df[col].replace('-', '0').astype(str).str.replace(',', '')
                     df[col] = pd.to_numeric(df[col], errors='coerce')
             
             st.session_state.revenue_data = df
@@ -327,10 +322,10 @@ raw_df.columns = raw_df.columns.str.strip()
     if 'revenue_data' in st.session_state:
         df = st.session_state.revenue_data
         
-        # 篩選成長股 (需確認欄位存在)
+        # 篩選強勢成長股 (YoY > 20%)
         if '年增率(YoY%)' in df.columns:
-            st.write("### 📈 營收強勢成長股")
-            strong_growth = df[(df['年增率(YoY%)'] > 20)].dropna()
+            st.write("### 📈 營收強勢成長股 (YoY > 20%)")
+            strong_growth = df[df['年增率(YoY%)'] > 20].dropna(subset=['年增率(YoY%)'])
             st.dataframe(strong_growth, use_container_width=True)
         
         st.subheader("📋 詳細營收數據")
