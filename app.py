@@ -279,69 +279,61 @@ with tab3:
         plot_stock_chart(topic_ticker)
       
 with tab4:
-# 1. 定義資料抓取函式 (使用官方 OpenAPI)
-@st.cache_data(ttl=3600)  # 每小時更新一次快取，避免重複請求
+    # 函式移入 with tab4 區塊內並修正縮排
+    @st.cache_data(ttl=3600)
     def fetch_twse_data():
-    url = "https://openapi.twse.com.tw/v1/opendata/t187ap05_L"
+        url = "https://openapi.twse.com.tw/v1/opendata/t187ap05_L"
         try:
-        response = requests.get(url, timeout=15)
-        response.raise_for_status()
-        data = response.json()
-            return pd.DataFrame(data)
+            response = requests.get(url, timeout=15)
+            response.raise_for_status()
+            return pd.DataFrame(response.json())
         except Exception as e:
-        st.error(f"讀取官方資料失敗: {e}")
+            st.error(f"讀取官方資料失敗: {e}")
             return pd.DataFrame()
 
-# 頁面主邏輯
-st.write("### 📊 上市公司營收監測系統")
+    st.write("### 📊 上市公司營收監測系統")
 
-df = fetch_twse_data()
+    df = fetch_twse_data()
 
     if not df.empty:
-    # 2. 欄位更名對應
-    mapping = {
-        '營業收入-上月比較增減(%)': '月增率(MoM%)',
-        '營業收入-去年同月增減(%)': '年增率(YoY%)',
-        '累計營業收入-前期比較增減(%)': '累計年增率(%)'
-    }
-    df = df.rename(columns=mapping)
-
-    # 3. 數據清理 (將 "--" 或空值轉換為 0)
-    cols_to_check = ['年增率(YoY%)', '月增率(MoM%)', '累計年增率(%)']
+        # 欄位對應與清理邏輯保持不變
+        mapping = {
+            '營業收入-上月比較增減(%)': '月增率(MoM%)',
+            '營業收入-去年同月增減(%)': '年增率(YoY%)',
+            '累計營業收入-前期比較增減(%)': '累計年增率(%)'
+        }
+        df = df.rename(columns=mapping)
+        
+        cols_to_check = ['年增率(YoY%)', '月增率(MoM%)', '累計年增率(%)']
         for col in cols_to_check:
-        if col in df.columns:
+            if col in df.columns:
                 df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
 
-    # 4. 互動介面：篩選門檻
-    col1, col2 = st.columns(2)
+        # 互動篩選
+        col1, col2 = st.columns(2)
         with col1:
-        yoy_threshold = st.slider("年增率門檻 (%)", 0, 200, 20, step=5)
+            yoy_threshold = st.slider("年增率門檻 (%)", 0, 200, 20, step=5, key="tab4_yoy")
         with col2:
-        mom_threshold = st.slider("月增率門檻 (%)", -50, 100, 5, step=5)
+            mom_threshold = st.slider("月增率門檻 (%)", -50, 100, 5, step=5, key="tab4_mom")
 
-    # 5. 執行篩選邏輯
-    condition = (
-        (df['年增率(YoY%)'] > yoy_threshold) & 
-        (df['月增率(MoM%)'] > mom_threshold) & 
-        (df['累計年增率(%)'] > 0)
-    )
-    
-    strong_growth = df[condition].sort_values('年增率(YoY%)', ascending=False)
+        # 篩選邏輯
+        condition = (
+            (df['年增率(YoY%)'] > yoy_threshold) & 
+            (df['月增率(MoM%)'] > mom_threshold) & 
+            (df['累計年增率(%)'] > 0)
+        )
+        strong_growth = df[condition].sort_values('年增率(YoY%)', ascending=False)
 
-    # 6. 顯示結果
-    st.caption(f"共符合 {len(strong_growth)} 筆（篩選條件：年增率 > {yoy_threshold}%，月增率 > {mom_threshold}%，累計年增率 > 0%）")
-    
-    # 篩選要顯示的欄位，讓畫面更清爽
-    display_cols = ['公司代號', '公司名稱', '年增率(YoY%)', '月增率(MoM%)', '累計年增率(%)']
-    st.dataframe(strong_growth[display_cols], use_container_width=True, hide_index=True)
+        st.caption(f"共符合 {len(strong_growth)} 筆資料")
+        
+        display_cols = ['公司代號', '公司名稱', '年增率(YoY%)', '月增率(MoM%)', '累計年增率(%)']
+        st.dataframe(strong_growth[display_cols], use_container_width=True, hide_index=True)
 
-    # 7. 加入下載功能
-    csv = strong_growth.to_csv(index=False).encode('utf-8-sig')
-    st.download_button("📥 下載篩選結果 CSV", data=csv, file_name="growth_stocks.csv", mime="text/csv")
-
+        # 下載
+        csv = strong_growth.to_csv(index=False).encode('utf-8-sig')
+        st.download_button("📥 下載結果 CSV", data=csv, file_name="growth_stocks.csv", mime="text/csv")
     else:
-    st.warning("目前暫無資料，請稍後再試。")
-
+        st.warning("目前暫無資料。")
 
 with tab5:
     st.write("### 📊 EPS查詢")
