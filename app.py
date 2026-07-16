@@ -387,7 +387,7 @@ with tab4:
             except Exception as e:
                 st.error(f"同步過程發生錯誤：{e}")
 
-    # 顯示結果
+# 顯示結果
     if 'revenue_data' in st.session_state:
         df = st.session_state.revenue_data
 
@@ -401,47 +401,46 @@ with tab4:
         with c2:
             mom_threshold = st.slider("月增率門檻 (%)", -50, 100, 5, step=5, key="mom_slider")
 
-       # 1. 篩選與排序邏輯
-strong_growth = df[
-    (df['年增率(YoY%)'] > yoy_threshold) &
-    (df['月增率(MoM%)'] > mom_threshold)
-].dropna(subset=['年增率(YoY%)']).sort_values('年增率(YoY%)', ascending=False)
+        # 1. 篩選與排序邏輯 (確保這裡向右縮排 8 個空格，與上方的 if 對齊)
+        strong_growth = df[
+            (df['年增率(YoY%)'] > yoy_threshold) &
+            (df['月增率(MoM%)'] > mom_threshold)
+        ].dropna(subset=['年增率(YoY%)']).sort_values('年增率(YoY%)', ascending=False)
 
-st.caption(f"共符合 {len(strong_growth)} 筆（年增率 > {yoy_threshold}% 且 月增率 > {mom_threshold}%）")
+        st.caption(f"共符合 {len(strong_growth)} 筆（年增率 > {yoy_threshold}% 且 月增率 > {mom_threshold}%）")
 
-# 2. 定義上色函式
-def highlight_negative(val):
-    color = 'red' if val < 0 else 'black'
-    return f'color: {color}'
+        # 2. 定義上色函式 (定義在函式內或上方皆可)
+        def highlight_negative(val):
+            color = 'red' if val < 0 else 'black'
+            return f'color: {color}'
 
-# 3. 建立 Styler 物件並應用樣式
-# 注意：這裡對特定的欄位應用顏色，若該欄位數值 < 0 則變紅
-styled_df = strong_growth.style.applymap(
-    highlight_negative, 
-    subset=['年增率(YoY%)', '月增率(MoM%)']
-)
+        # 3. 建立 Styler 物件並應用樣式
+        styled_df = strong_growth.style.map(
+            highlight_negative, 
+            subset=['年增率(YoY%)', '月增率(MoM%)']
+        )
 
-# 4. 顯示表格 (只呼叫一次)
-    st.dataframe(
-        styled_df,
-        use_container_width=True,
-        hide_index=True,
-        column_config={
-            "年增率(YoY%)": st.column_config.NumberColumn("年增率(YoY%)", format="%.2f%%"),
-            "月增率(MoM%)": st.column_config.NumberColumn("月增率(MoM%)", format="%.2f%%")
-        }
-    )
+        # 4. 顯示表格
+        st.dataframe(
+            styled_df,
+            use_container_width=True,
+            hide_index=True,
+            column_config={
+                "年增率(YoY%)": st.column_config.NumberColumn("年增率(YoY%)", format="%.2f%%"),
+                "月增率(MoM%)": st.column_config.NumberColumn("月增率(MoM%)", format="%.2f%%")
+            }
+        )
 
-    # 下載按鈕 (確保這部分的縮排與 st.dataframe 對齊)
-    csv = strong_growth.to_csv(index=False).encode('utf-8-sig')
-    st.download_button(
-        label="📥 下載篩選結果 CSV",
-        data=csv,
-        file_name="strong_growth_stocks.csv",
-        mime="text/csv"
-    )
-else:
-    st.info("👆 請先點擊上方按鈕載入資料")
+        # 下載按鈕
+        csv = strong_growth.to_csv(index=False).encode('utf-8-sig')
+        st.download_button(
+            label="📥 下載篩選結果 CSV",
+            data=csv,
+            file_name="strong_growth_stocks.csv",
+            mime="text/csv"
+        )
+    else:
+        st.info("👆 請先點擊上方按鈕載入資料")
 
 with tab5:
     st.write("### 📊 EPS查詢")
