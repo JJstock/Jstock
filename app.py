@@ -513,7 +513,7 @@ with tab6:
         df_news = st.session_state.news_data
         
         st.subheader("🔍 重訊關鍵字篩選")
-        search_query = st.text_input("輸入關鍵字 (支援 | 分隔)", value="自結|財報|財務報告|上半年")
+        search_query = st.text_input("輸入關鍵字 (支援 | 分隔)", value="自結|財報|財務報告|上半年|第二季")
 
         # 3. 篩選邏輯 (僅保留關鍵字過濾)
         mask_text = df_news['主旨 '].str.contains(search_query, case=False, na=False, regex=True)
