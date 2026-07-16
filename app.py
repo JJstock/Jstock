@@ -514,9 +514,8 @@ if 'news_data' not in st.session_state:
 df_news = st.session_state.news_data
 
 if not df_news.empty:
-    st.write("--- 除錯：目前的欄位名稱 ---")
-    st.write(df_news.columns.tolist()) # 這行會印出真實欄位名稱
-    
+    st.write("主旨")
+        
     # 2. 核心搜尋邏輯
     # case=False 表示不區分大小寫，na=False 表示忽略空值
     mask = df_news['TITLE'].str.contains(search_query, case=False, na=False, regex=True)
