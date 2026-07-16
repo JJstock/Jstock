@@ -277,44 +277,50 @@ with tab3:
     )
     if topic_ticker:
         plot_stock_chart(topic_ticker)
+
         
 with tab4:
-    st.subheader("📁 上傳每月營收數據")
-    uploaded_file = st.file_uploader("請上傳證交所格式的 CSV 檔案", type=['csv'])
+    @st.cache_data(ttl=3600) # 快取一小時，避免重複請求
+def fetch_data_from_github():
+    # 將下方的 URL 換成你剛剛複製的 Raw 連結
+    url ={ "https://raw.githubusercontent.com/JJstock/Jstock/refs/heads/main/TW.csv",
+           "https://raw.githubusercontent.com/JJstock/Jstock/refs/heads/main/TWO.csv"
+         }
+    
+    # 直接讀取 (與處理上傳檔案的方式相同)
+    raw_df = pd.read_csv(url, encoding='big5', header=1)
+    raw_df.columns = raw_df.columns.str.strip()
+    return raw_df
 
+    # 讀取並處理
+    raw_df = fetch_data_from_github()
+
+    # 定義自動偵測檔案格式的強大函式
     def read_twse_csv(file):
-        """
-        依序嘗試常見編碼，並自動偵測標題列位置：
-        - 有些版本第一行是標題（header=0）
-        - 有些版本第一行是說明文字，第二行才是標題（header=1）
-        判斷依據：讀進來的欄位中是否包含「公司代號」
-        """
         last_err = None
         for enc in ['utf-8-sig', 'big5', 'cp950']:
             for header_row in [0, 1]:
                 try:
                     file.seek(0)
                     tmp = pd.read_csv(file, encoding=enc, header=header_row)
+                    # 清理欄位中的全形空白與控制字元
                     tmp.columns = tmp.columns.str.strip().str.replace('\u3000', '', regex=False)
                     if '公司代號' in tmp.columns:
                         return tmp
-                except (UnicodeDecodeError, UnicodeError) as e:
+                except Exception as e:
                     last_err = e
                     continue
-        raise ValueError(f"無法辨識檔案格式（已嘗試多種編碼與標題列位置）：{last_err}")
+        raise ValueError(f"無法辨識檔案格式：{last_err}")
 
     if uploaded_file is not None:
         try:
-            # 1. 讀取 CSV：header=1 跳過第一行說明文字，自動嘗試多種編碼
+            # 1. 自動偵測並讀取
             raw_df = read_twse_csv(uploaded_file)
 
-            # 2. 清理標題名稱：去除前後隱藏空格與欄位中的全形空格
-            raw_df.columns = (
-                raw_df.columns.str.strip()
-                .str.replace('\u3000', '', regex=False)
-            )
+            # 2. 清理標題名稱
+            raw_df.columns = raw_df.columns.str.strip().str.replace('\u3000', '', regex=False)
 
-            # 3. 建立映射並選取欄位
+            # 3. 欄位對應與篩選
             mapping = {
                 '公司代號': '代號',
                 '公司名稱': '名稱',
@@ -322,45 +328,34 @@ with tab4:
                 '營業收入-去年同月增減(%)': '年增率(YoY%)',
                 '累計營業收入-前期比較增減(%)': '累計年增率(%)'
             }
-
-            # 重新命名並篩選存在的欄位
             df = raw_df.rename(columns=mapping)
             cols_to_keep = ['代號', '名稱', '月增率(MoM%)', '年增率(YoY%)', '累計年增率(%)']
             df = df[[c for c in cols_to_keep if c in df.columns]]
 
-            # 4. 剔除頁尾備註等非資料列（代號不是數字的列）
-            if '代號' in df.columns:
-                df = df[pd.to_numeric(df['代號'], errors='coerce').notna()]
+            # 4. 剔除無效列 (排除備註行)
+            df = df[pd.to_numeric(df['代號'], errors='coerce').notna()]
 
-            # 5. 數據清理：強制轉為數值格式
+            # 5. 數值清理
             for col in ['月增率(MoM%)', '年增率(YoY%)', '累計年增率(%)']:
                 if col in df.columns:
-                    df[col] = (
-                        df[col].astype(str)
-                        .str.strip()
-                        .str.replace(',', '', regex=False)
-                        .replace(r'^-+$', '0', regex=True)  # 處理 -、--、全形－ 等空值標記
-                    )
+                    df[col] = df[col].astype(str).str.replace(',', '').replace(r'^-+$', '0', regex=True)
                     df[col] = pd.to_numeric(df[col], errors='coerce')
 
             st.session_state.revenue_data = df
             st.success(f"成功載入！共 {len(df)} 筆公司資料。")
 
         except Exception as e:
-            st.error(f"讀取失敗，請檢查格式：{e}")
+            st.error(f"讀取失敗：{e}")
 
-    # 6. 顯示部分
+    # 6. 顯示結果
     if 'revenue_data' in st.session_state:
         df = st.session_state.revenue_data
-
-        # 篩選邏輯：檢查欄位是否存在
+        
         if all(c in df.columns for c in ['年增率(YoY%)', '月增率(MoM%)']):
-            st.write("### 📈 營收強勢成長股清單")
-            strong_growth = df[
-                (df['年增率(YoY%)'] > 20) & (df['月增率(MoM%)'] > 5)
-            ].dropna(subset=['年增率(YoY%)'])
+            st.write("📈 營收強勢成長股清單")
+            strong_growth = df[(df['年增率(YoY%)'] > 20) & (df['月增率(MoM%)'] > 5)].dropna(subset=['年增率(YoY%)'])
             st.caption(f"共符合 {len(strong_growth)} 筆")
             st.dataframe(strong_growth, use_container_width=True, hide_index=True)
 
         # st.subheader("📋 詳細營收數據")
-        # st.dataframe(df, use_container_width=True, hide_index=True)
+        # st.dataframe(df, use_container_width=True)
