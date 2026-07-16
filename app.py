@@ -526,9 +526,9 @@ with col2:
     # 預設選取今天
     selected_date = st.date_input("選擇發言日期")
 
-# 3. 轉換日期格式 (轉為民國年字串，例如 115/07/17)
+# 3. 轉換日期格式 (轉為民國年字串，例如 1150717)
 # 這裡假設發言日期格式為 YYY/MM/DD
-target_date_str = f"{selected_date.year - 1911}/{selected_date.strftime('%m/%d')}"
+target_date_str = f"{selected_date.year - 1911}{selected_date.strftime('%m/%d')}"
 
 # 4. 篩選邏輯
 if not df_news.empty:
