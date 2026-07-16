@@ -284,24 +284,22 @@ with tab4:
     
     if uploaded_file is not None:
         try:
-            import codecs
+            # 1. 將上傳的檔案內容讀取為位元組 (bytes)
+            file_bytes = uploaded_file.getvalue()
             
-            # 使用 codecs 處理編碼，遇到錯誤直接忽略 (ignore)，這樣就不會報錯了
-            # 然後將處理後的內容轉為記憶體中的 StringIO 物件給 Pandas 讀取
+            # 2. 使用 io.BytesIO 將位元組包裝成檔案物件，並指定編碼直接讀取
+            # 這能避開檔案路徑路徑問題，並處理編碼錯誤
             import io
-            file_content = codecs.open(uploaded_file, 'r', encoding='big5', errors='ignore').read()
-            csv_data = io.StringIO(file_content)
+            raw_df = pd.read_csv(io.BytesIO(file_bytes), encoding='big5', header=1, errors='ignore')
             
-            # 讀取 CSV (現在直接讀取 StringIO 物件，編碼問題已在前面解決)
-            raw_df = pd.read_csv(csv_data, header=1)
-            
-            # 清理欄位名稱
+            # 3. 清理欄位名稱
             raw_df.columns = raw_df.columns.str.strip()
             
-            # 顯示偵錯用
-            st.write("目前系統識別到的欄位：", raw_df.columns.tolist())
+            # 偵錯：印出欄位名稱，確認是否讀取成功
+            st.write("系統識別到的欄位名稱：", raw_df.columns.tolist())
             
-            # 定義精確的映射 (根據你上傳檔案的標題)
+            # 4. 定義 mapping，直接對應證交所的標準標題
+            # 注意：請確保 Key 的名稱與上方偵錯清單中的名稱完全一致
             mapping = {
                 '公司代號': '代號',
                 '公司名稱': '名稱',
@@ -312,7 +310,7 @@ with tab4:
             
             df = raw_df.rename(columns=mapping)
             
-            # 數值轉換
+            # 5. 確保資料轉為數字 (處理 '-' 或空值)
             for col in ['月增率(MoM%)', '年增率(YoY%)', '累計年增率(%)']:
                 if col in df.columns:
                     df[col] = pd.to_numeric(df[col].astype(str).str.replace(',', ''), errors='coerce')
@@ -327,10 +325,10 @@ with tab4:
     if 'revenue_data' in st.session_state:
         df = st.session_state.revenue_data
         
-        # 強勢股篩選：確保欄位存在才篩選
-        if '年增率(YoY%)' in df.columns and '月增率(MoM%)' in df.columns:
+        # 篩選邏輯：檢查欄位是否存在
+        if all(c in df.columns for c in ['年增率(YoY%)', '月增率(MoM%)']):
             st.write("### 📈 營收強勢成長股清單")
-            strong_growth = df[(df['年增率(YoY%)'] > 20) & (df['月增率(MoM%)'] > 5)].dropna()
+            strong_growth = df[(df['年增率(YoY%)'] > 20) & (df['月增率(MoM%)'] > 5)].dropna(subset=['年增率(YoY%)'])
             st.dataframe(strong_growth, use_container_width=True)
             
         st.subheader("📋 詳細營收數據")
