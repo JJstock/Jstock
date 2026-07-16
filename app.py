@@ -481,3 +481,38 @@ with tab5:
                 
         except Exception as e:
             st.error(f"查詢失敗: {str(e)}")
+def fetch_twse_news():
+    url = "https://openapi.twse.com.tw/v1/opendata/t187ap04_L"
+    try:
+        response = requests.get(url)
+        response.raise_for_status()
+        data = response.json()
+        df = pd.DataFrame(data)
+        return df
+    except Exception as e:
+        st.error(f"無法獲取重大訊息資料: {e}")
+        return pd.DataFrame()
+
+
+    st.subheader("📰 上市每日重大訊息")
+    
+    if st.button("🔄 同步最新重大訊息"):
+        df_news = fetch_twse_news()
+        
+        if not df_news.empty:
+            st.success(f"成功載入 {len(df_news)} 筆重訊")
+            
+            # 簡單篩選與顯示 (你可以根據欄位名稱調整)
+            # 例如：只顯示最近的幾筆，或篩選特定關鍵字
+            st.dataframe(df_news.head(50), use_container_width=True)
+            
+            # 提供下載
+            csv = df_news.to_csv(index=False, encoding='utf-8-sig').encode('utf-8-sig')
+            st.download_button(
+                label="📥 下載完整重訊 CSV",
+                data=csv,
+                file_name="TWSE_News_Daily.csv",
+                mime="text/csv"
+            )
+        else:
+            st.warning("目前沒有資料或抓取失敗。")
