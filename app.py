@@ -502,20 +502,34 @@ with tab6: # 假設這是你目前的 tab
     if st.button("🔄 同步最新重大訊息"):
         df_news = fetch_twse_news()
         
-        if not df_news.empty:
-            st.success(f"成功載入 {len(df_news)} 筆重訊")
-            
-            # 簡單篩選與顯示 (你可以根據欄位名稱調整)
-            # 例如：只顯示最近的幾筆，或篩選特定關鍵字
-            st.dataframe(df_news.head(50), use_container_width=True)
-            
-            # 提供下載
-            csv = df_news.to_csv(index=False, encoding='utf-8-sig').encode('utf-8-sig')
-            st.download_button(
-                label="📥 下載完整重訊 CSV",
-                data=csv,
-                file_name="TWSE_News_Daily.csv",
-                mime="text/csv"
-            )
-        else:
-            st.warning("目前沒有資料或抓取失敗。")
+       # 1. 執行搜尋與顯示
+st.subheader("🔍 重訊關鍵字篩選")
+
+# 使用 text_input 讓使用者手動輸入，但也預設篩選出特定財報關鍵字
+search_query = st.text_input("輸入標題關鍵字 (支援多關鍵字，用 | 分隔)", value="自結|財報|財務報告|上半年")
+
+if 'news_data' not in st.session_state:
+    st.session_state.news_data = fetch_twse_news()
+
+df_news = st.session_state.news_data
+
+if not df_news.empty:
+    # 2. 核心搜尋邏輯
+    # case=False 表示不區分大小寫，na=False 表示忽略空值
+    mask = df_news['TITLE'].str.contains(search_query, case=False, na=False, regex=True)
+    filtered_news = df_news[mask]
+    
+    st.caption(f"共找到 {len(filtered_news)} 筆符合 '{search_query}' 的重大訊息")
+    
+    # 3. 顯示結果
+    st.dataframe(
+        filtered_news[['DATE', 'COMPANY_CODE', 'COMPANY_NAME', 'TITLE']], 
+        use_container_width=True,
+        hide_index=True
+    )
+    
+    # 4. 下載篩選後結果
+    csv = filtered_news.to_csv(index=False, encoding='utf-8-sig').encode('utf-8-sig')
+    st.download_button("📥 下載篩選後的重訊 CSV", data=csv, file_name="filtered_news.csv", mime="text/csv")
+else:
+    st.info("尚無重訊資料，請點擊同步按鈕。")
