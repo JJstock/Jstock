@@ -508,28 +508,47 @@ st.subheader("🔍 重訊關鍵字篩選")
 # 使用 text_input 讓使用者手動輸入，但也預設篩選出特定財報關鍵字
 search_query = st.text_input("輸入標題關鍵字 (支援多關鍵字，用 | 分隔)", value="自結|財報|財務報告|上半年")
 
+# 1. 執行一次清理，移除欄位名稱多餘的空格
 if 'news_data' not in st.session_state:
     st.session_state.news_data = fetch_twse_news()
+    # 統一移除所有欄位名稱的頭尾空格，解決 KeyError 問題
+    st.session_state.news_data.columns = st.session_state.news_data.columns.str.strip()
 
 df_news = st.session_state.news_data
 
-if not df_news.empty:      
-    # 2. 核心搜尋邏輯
-    # case=False 表示不區分大小寫，na=False 表示忽略空值
-    mask = df_news['主旨 '].str.contains(search_query, case=False, na=False, regex=True)
-    filtered_news = df_news[mask]
+st.subheader("🔍 重訊進階篩選")
+
+# 2. 建立搜尋與日期輸入介面
+col1, col2 = st.columns(2)
+with col1:
+    search_query = st.text_input("輸入標題關鍵字", value="自結|財報|財務報告|上半年")
+with col2:
+    # 預設選取今天
+    selected_date = st.date_input("選擇發言日期")
+
+# 3. 轉換日期格式 (轉為民國年字串，例如 115/07/17)
+# 這裡假設發言日期格式為 YYY/MM/DD
+target_date_str = f"{selected_date.year - 1911}/{selected_date.strftime('%m/%d')}"
+
+# 4. 篩選邏輯
+if not df_news.empty:
+    # 同時過濾「關鍵字」與「日期」
+    mask_text = df_news['主旨'].str.contains(search_query, case=False, na=False, regex=True)
+    mask_date = df_news['發言日期'] == target_date_str
     
-    st.caption(f"共找到 {len(filtered_news)} 筆符合 '{search_query}' 的重大訊息")
+    filtered_news = df_news[mask_text & mask_date]
     
-    # 3. 顯示結果
+    st.caption(f"在 {target_date_str} 共有 {len(filtered_news)} 筆符合條件的重訊")
+    
+    # 5. 顯示結果
     st.dataframe(
-        filtered_news[['發言日期', '公司代號', '公司名稱', '主旨 ']], 
+        filtered_news[['發言日期', '公司代號', '公司名稱', '主旨']], 
         use_container_width=True,
         hide_index=True
     )
     
-    # 4. 下載篩選後結果
+    # 6. 下載
     csv = filtered_news.to_csv(index=False, encoding='utf-8-sig').encode('utf-8-sig')
-    st.download_button("📥 下載篩選後的重訊 CSV", data=csv, file_name="filtered_news.csv", mime="text/csv")
+    st.download_button("📥 下載篩選後的重訊 CSV", data=csv, file_name=f"news_{target_date_str.replace('/', '')}.csv", mime="text/csv")
 else:
-    st.info("尚無重訊資料，請點擊同步按鈕。")
+    st.info("尚無資料，請點擊同步按鈕。")
