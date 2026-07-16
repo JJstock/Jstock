@@ -284,13 +284,16 @@ with tab4:
     
     if uploaded_file is not None:
         try:
-            # 【關鍵】證交所 CSV 第一行通常是說明文字，header=1 才會抓到正確的標題行
-            # 使用 big5 編碼讀取
-            raw_df = pd.read_csv(uploaded_file, encoding='big5', header=1, errors='ignore')
+            # 1. 使用 io 模組處理串流，這在處理上傳檔案時比直接傳 file 給 pd.read_csv 更穩定
+            import io
             
-            # 清理欄位名稱（去除前後空白）
+            # 使用 'big5' 並設定編碼錯誤處理為 'replace' (如果直接在 open 設定則不會有參數衝突)
+            data = io.TextIOWrapper(uploaded_file, encoding='big5', errors='replace')
+            
+            # 2. 讀取 CSV
+            raw_df = pd.read_csv(data)
+            # 3. 清理欄位名稱 (證交所的 CSV 常有頭尾多餘字元)
             raw_df.columns = raw_df.columns.str.strip()
-            
             # 定義對應
             rename_mapping = {
                 '公司代號': '代號',
