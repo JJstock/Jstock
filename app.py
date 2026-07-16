@@ -445,29 +445,31 @@ with tab4:
 with tab5:
     st.write("### 📊 EPS查詢")
     # 您的 富果API Key
-API_KEY = "ZTYzYjFmNDQtMjEyNC00MjgxLTg5NDQtNmEwNjhhMzY4OGY3IDMxZDY5OWJhLWQ1MDUtNDJkYy1hOWI4LTNlYmU3ZmE2MDEwNA=="
+    API_KEY = "ZTYzYjFmNDQtMjEyNC00MjgxLTg5NDQtNmEwNjhhMzY4OGY3IDMxZDY5OWJhLWQ1MDUtNDJkYy1hOWI4LTNlYmU3ZmE2MDEwNA=="
 
     def get_eps_from_fugle(symbol):
-    # 使用 Fugle 的 Snapshot API 獲取即時財報指標
+    # 使用 Fugle 的 Snapshot API
     url = f"https://api.fugle.tw/marketdata/v1.0/stock/info/{symbol}"
     params = {"apiToken": API_KEY}
     
-    response = requests.get(url, params=params)
-    if response.status_code == 200:
-        data = response.json()
-        # 這裡會回傳最新的財報指標，包含 EPS
-        return data
-    else:
+    try:
+        response = requests.get(url, params=params, timeout=10)
+        if response.status_code == 200:
+            return response.json()
+        else:
+            return None
+    except Exception:
         return None
 
 # Streamlit 介面
 st.title("台股 EPS 監測系統 (API 版)")
 symbol = st.text_input("輸入股票代號 (例如 2330)", "2330")
 
-    if st.button("查詢財報數據"):
+# 修正縮排：將按鈕後的邏輯放入縮排內
+if st.button("查詢財報數據"):
     info = get_eps_from_fugle(symbol)
     if info:
         st.success(f"已獲取 {symbol} 最新數據")
-        st.json(info) # 顯示完整的 JSON 結構
+        st.json(info)  # 顯示完整的 JSON 結構
     else:
         st.error("查詢失敗，請檢查 API Key 或股票代號")
