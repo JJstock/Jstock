@@ -290,22 +290,41 @@ with tab4:
             # 使用 'big5' 並設定編碼錯誤處理為 'replace' (如果直接在 open 設定則不會有參數衝突)
             data = io.TextIOWrapper(uploaded_file, encoding='big5', errors='replace')
             
-            # 2. 讀取 CSV
-            raw_df = pd.read_csv(data)
-            # 3. 清理欄位名稱 (證交所的 CSV 常有頭尾多餘字元)
+            # ... 讀取 CSV 後 ...
+            raw_df = pd.read_csv(uploaded_file, encoding='big5', header=1, errors='ignore')
+            
+            # 【偵錯檢查】顯示目前讀到的所有欄位名稱
+            st.write("目前讀到的原始欄位：", raw_df.columns.tolist())
+            
+            # 清理前後空白
             raw_df.columns = raw_df.columns.str.strip()
-           # 定義對應
+            
+            # 如果發現顯示的欄位名是 "營業收入-去年同月增減(%)" 
+            # 但你的 rename_mapping 對應的是 "年增率(YoY%)"
+            # 沒問題，rename 會把它轉過去。
+           # 自動清理欄位名稱
+            raw_df.columns = raw_df.columns.str.strip()
+            
+            # 使用列表推導式尋找包含特定關鍵字的欄位
+            def find_col(keyword):
+                for col in raw_df.columns:
+                    if keyword in col:
+                        return col
+                return None
+
+            # 建立正確的對應
             rename_mapping = {
-                '公司代號': '代號',
-                '公司名稱': '名稱',
-                '營業收入-當月營收': '當月營收',
-                '營業收入-上月比較增減(%)': '月增率(MoM%)',
-                '營業收入-去年同月增減(%)': '年增率(YoY%)',
-                '累計營業收入-前期比較增減(%)': '累計年增率(%)'
+                find_col('公司代號'): '代號',
+                find_col('公司名稱'): '名稱',
+                find_col('當月營收'): '當月營收',
+                find_col('上月比較增減'): '月增率(MoM%)',
+                find_col('去年同月增減'): '年增率(YoY%)',
+                find_col('累計營業收入-前期比較增減'): '累計年增率(%)'
             }
             
-            # 篩選並重新命名
-            df = raw_df[raw_df.columns.intersection(rename_mapping.keys())].rename(columns=rename_mapping)
+            # 執行重新命名 (過濾掉 None)
+            rename_mapping = {k: v for k, v in rename_mapping.items() if k is not None}
+            df = raw_df.rename(columns=rename_mapping)
             
             # 【關鍵】將數據轉為數值格式，否則無法進行 YoY > 20 的篩選
             for col in ['月增率(MoM%)', '年增率(YoY%)', '累計年增率(%)']:
