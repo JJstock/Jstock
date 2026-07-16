@@ -294,7 +294,7 @@ with tab4:
             raw_df = pd.read_csv(data)
             # 3. 清理欄位名稱 (證交所的 CSV 常有頭尾多餘字元)
             raw_df.columns = raw_df.columns.str.strip()
-            # 定義對應
+           # 定義對應
             rename_mapping = {
                 '公司代號': '代號',
                 '公司名稱': '名稱',
