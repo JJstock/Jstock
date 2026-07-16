@@ -450,15 +450,20 @@ with tab5:
 
     # 定義函式 (縮排必須位於 with tab5 內部)
     def get_eps_from_fugle(symbol):
-        url = f"https://api.fugle.tw/marketdata/v1.0/stock/info/{symbol}"
-        params = {"apiToken": API_KEY}
-        try:
-            response = requests.get(url, params=params, timeout=10)
-            if response.status_code == 200:
-                return response.json()
+    url = f"https://api.fugle.tw/marketdata/v1.0/stock/info/{symbol}"
+    # 嘗試將 Token 放入 Header 中
+    headers = {"Authorization": f"Bearer {API_KEY}"}
+    
+    try:
+        response = requests.get(url, headers=headers, timeout=10)
+        # 增加除錯功能：列印出錯誤訊息
+        if response.status_code != 200:
+            st.error(f"錯誤代碼: {response.status_code}, 內容: {response.text}")
             return None
-        except Exception:
-            return None
+        return response.json()
+    except Exception as e:
+        st.error(f"連線異常: {e}")
+        return None
 
     # Streamlit 輸入與邏輯 (縮排必須與上述一致)
     symbol = st.text_input("輸入股票代號 (例如 2330)", "2330", key="stock_symbol_input")
