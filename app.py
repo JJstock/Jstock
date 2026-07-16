@@ -277,10 +277,7 @@ with tab3:
     )
     if topic_ticker:
         plot_stock_chart(topic_ticker)
-
-        
-
-
+      
 with tab4:
     
     # 1. 確保 requests 已匯入 (建議在程式最上方)
@@ -370,4 +367,4 @@ with tab4:
         st.caption(f"共符合 {len(strong_growth)} 筆")
         st.dataframe(strong_growth, use_container_width=True, hide_index=True)
     else:
-        st.info("👆 請先點擊上方按鈕載入資料")
+        st.info("👆 載入資料")
