@@ -442,6 +442,7 @@ with tab4:
     else:
         st.info("👆 請先點擊上方按鈕載入資料")
 
+pip install fugle-marketdata
 from fugle_marketdata import MarketDataClient
 
 with tab5:
