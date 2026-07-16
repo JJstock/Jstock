@@ -320,27 +320,58 @@ with tab4:
             df = raw_df.rename(columns=mapping)
             
             # 數值清理
-            cols = ['代號', '名稱', '月增率(MoM%)', '年增率(YoY%)', '累計年增率(%)']
-            df = df[[c for c in cols if c in df.columns]]
-            df = df[pd.to_numeric(df['代號'], errors='coerce').notna()]
-            
+            raw_df.columns = (
+                raw_df.columns.str.strip()
+                .str.replace('\u3000', '', regex=False)
+            )
+
+            # 3. 建立映射並選取欄位
+            mapping = {
+                '公司代號': '代號',
+                '公司名稱': '名稱',
+                '營業收入-上月比較增減(%)': '月增率(MoM%)',
+                '營業收入-去年同月增減(%)': '年增率(YoY%)',
+                '累計營業收入-前期比較增減(%)': '累計年增率(%)'
+            }
+
+            # 重新命名並篩選存在的欄位
+            df = raw_df.rename(columns=mapping)
+            cols_to_keep = ['代號', '名稱', '月增率(MoM%)', '年增率(YoY%)', '累計年增率(%)']
+            df = df[[c for c in cols_to_keep if c in df.columns]]
+
+            # 4. 剔除頁尾備註等非資料列（代號不是數字的列）
+            if '代號' in df.columns:
+                df = df[pd.to_numeric(df['代號'], errors='coerce').notna()]
+
+            # 5. 數據清理：強制轉為數值格式
             for col in ['月增率(MoM%)', '年增率(YoY%)', '累計年增率(%)']:
                 if col in df.columns:
-                    df[col] = pd.to_numeric(df[col].astype(str).str.replace(',', '').replace(r'^-+$', '0', regex=True), errors='coerce')
-            
-            st.session_state.revenue_data = df
-            st.success(f"成功合併載入！共 {len(df)} 筆公司資料。")
-        except Exception as e:
-            st.error(f"同步失敗：{e}")
+                    df[col] = (
+                        df[col].astype(str)
+                        .str.strip()
+                        .str.replace(',', '', regex=False)
+                        .replace(r'^-+$', '0', regex=True)  # 處理 -、--、全形－ 等空值標記
+                    )
+                    df[col] = pd.to_numeric(df[col], errors='coerce')
 
-    # 3. 顯示結果 (確保也在 tab4 的層級下)
+            st.session_state.revenue_data = df
+            st.success(f"成功載入！共 {len(df)} 筆公司資料。")
+
+        except Exception as e:
+            st.error(f"讀取失敗，請檢查格式：{e}")
+
+    # 6. 顯示部分
     if 'revenue_data' in st.session_state:
         df = st.session_state.revenue_data
-        st.write("### 📈 營收強勢成長股清單")
-        
-        # 篩選成長股
-        strong_growth = df[(df['年增率(YoY%)'] > 20) & (df['月增率(MoM%)'] > 5)].dropna(subset=['年增率(YoY%)'])
-        st.dataframe(strong_growth, use_container_width=True, hide_index=True)
+
+        # 篩選邏輯：檢查欄位是否存在
+        if all(c in df.columns for c in ['年增率(YoY%)', '月增率(MoM%)']):
+            st.write("### 📈 營收強勢成長股清單")
+            strong_growth = df[
+                (df['年增率(YoY%)'] > 20) & (df['月增率(MoM%)'] > 5)
+            ].dropna(subset=['年增率(YoY%)'])
+            st.caption(f"共符合 {len(strong_growth)} 筆")
+            st.dataframe(strong_growth, use_container_width=True, hide_index=True)
 
         # st.subheader("📋 詳細營收數據")
         # st.dataframe(df, use_container_width=True)
