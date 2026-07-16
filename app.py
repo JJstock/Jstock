@@ -284,63 +284,53 @@ with tab4:
     
     if uploaded_file is not None:
         try:
-            # 1. 讀取檔案：header=1 跳過說明文字，errors='ignore' 處理亂碼
-            raw_df = pd.read_csv(uploaded_file, encoding='big5', header=1, errors='ignore')
+            # 【修正 1】：改用直接讀取，先不帶容易出錯的參數
+            # 證交所資料 header=1 是正確的，因為第 0 行是說明文字
+            raw_df = pd.read_csv(uploaded_file, encoding='big5', header=1)
             
-            # 2. 清理標題：去除前後空格
+            # 【修正 2】：強制清理欄位名稱的隱形空白
             raw_df.columns = raw_df.columns.str.strip()
             
-            # 3. 定義關鍵字對應邏輯
-            def find_col(keyword):
-                for col in raw_df.columns:
-                    if keyword in col:
-                        return col
-                return None
-
-            rename_mapping = {
-                find_col('公司代號'): '代號',
-                find_col('公司名稱'): '名稱',
-                find_col('當月營收'): '當月營收',
-                find_col('上月比較增減'): '月增率(MoM%)',
-                find_col('去年同月增減'): '年增率(YoY%)',
-                find_col('累計營業收入-前期比較增減'): '累計年增率(%)'
+            # 【偵錯】：如果這裡報錯，請觀察左側顯示的原始欄位名稱
+            st.write("目前系統識別到的欄位：", raw_df.columns.tolist())
+            
+            # 【修正 3】：明確對應，不再使用 find_col，直接寫死對應
+            # 請依照上面顯示的清單，確認這些 Key 是否完全正確
+            mapping = {
+                '公司代號': '代號',
+                '公司名稱': '名稱',
+                '營業收入-上月比較增減(%)': '月增率(MoM%)',
+                '營業收入-去年同月增減(%)': '年增率(YoY%)',
+                '累計營業收入-前期比較增減(%)': '累計年增率(%)'
             }
             
-            # 過濾掉沒找到的欄位並重新命名
-            rename_mapping = {k: v for k, v in rename_mapping.items() if k is not None}
-            df = raw_df.rename(columns=rename_mapping)
+            df = raw_df.rename(columns=mapping)
             
-            # 4. 資料轉換：將欄位轉為數字格式
-            num_cols = ['月增率(MoM%)', '年增率(YoY%)', '累計年增率(%)']
-            for col in num_cols:
+            # 只保留需要的欄位
+            cols_to_keep = ['代號', '名稱', '月增率(MoM%)', '年增率(YoY%)', '累計年增率(%)']
+            df = df[[c for c in cols_to_keep if c in df.columns]]
+            
+            # 【修正 4】：確保資料轉為數字，將 '%' 符號或文字轉成 float
+            for col in ['月增率(MoM%)', '年增率(YoY%)', '累計年增率(%)']:
                 if col in df.columns:
-                    # 先處理 '-' 字元並強制轉數值
-                    df[col] = df[col].replace('-', 0).astype(str).str.replace(',', '')
-                    df[col] = pd.to_numeric(df[col], errors='coerce')
+                    # 先將資料轉字串，去除可能存在的逗號，再轉浮點數
+                    df[col] = pd.to_numeric(df[col].astype(str).str.replace(',', ''), errors='coerce')
             
             st.session_state.revenue_data = df
-            st.success("資料已成功載入與處理！")
+            st.success("資料已成功載入！")
             
         except Exception as e:
-            st.error(f"讀取失敗：{e}")
+            st.error(f"讀取過程發生錯誤：{e}")
 
-    # 顯示分析結果
+    # 顯示部分
     if 'revenue_data' in st.session_state:
         df = st.session_state.revenue_data
         
-        st.write("### 📈 營收強勢成長股清單 (YoY > 20% & MoM > 5%)")
-        # 篩選：去除 NaN 值並取出符合條件的股票
-        strong_growth = df[(df['年增率(YoY%)'] > 20) & (df['月增率(MoM%)'] > 5)].dropna(subset=['年增率(YoY%)'])
-        
-        st.dataframe(
-            strong_growth, 
-            use_container_width=True,
-            column_config={
-                "月增率(MoM%)": st.column_config.NumberColumn(format="%.2f%%"),
-                "年增率(YoY%)": st.column_config.NumberColumn(format="%.2f%%"),
-                "累計年增率(%)": st.column_config.NumberColumn(format="%.2f%%"),
-            }
-        )
-        
+        # 強勢股篩選：確保欄位存在才篩選
+        if '年增率(YoY%)' in df.columns and '月增率(MoM%)' in df.columns:
+            st.write("### 📈 營收強勢成長股清單")
+            strong_growth = df[(df['年增率(YoY%)'] > 20) & (df['月增率(MoM%)'] > 5)].dropna()
+            st.dataframe(strong_growth, use_container_width=True)
+            
         st.subheader("📋 詳細營收數據")
         st.dataframe(df, use_container_width=True)
