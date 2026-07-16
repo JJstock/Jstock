@@ -467,9 +467,20 @@ with tab5:
                 
                 if data:
                     st.success(f"成功獲取 {symbol} 資料")
-                    # 顯示資料，SDK 回傳的是物件，建議轉為 dict 查看
-                    st.json(data) 
+                    
+                    # 假設您想提取特定欄位，可以這樣做：
+                    # 注意：實際欄位名稱請依據 st.json 顯示的內容調整
+                    col1, col2, col3 = st.columns(3)
+                    
+                    # 範例：顯示基本資料
+                    col1.metric("公司名稱", data.get('name', 'N/A'))
+                    col2.metric("產業別", data.get('industry', 'N/A'))
+                    
+                    # 顯示完整的 JSON 結構以供偵錯
+                    with st.expander("查看原始數據結構"):
+                        st.json(data)
                 else:
                     st.warning("查無資料，請確認代號是否正確 (例如上市股請用 2330)")
             except Exception as e:
                 st.error(f"SDK 呼叫失敗，請檢查網路或 API 權限: {str(e)}")
+                
