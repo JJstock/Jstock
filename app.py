@@ -283,16 +283,25 @@ with tab4:
     uploaded_file = st.file_uploader("請上傳證交所格式的 CSV 檔案", type=['csv'])
 
     def read_twse_csv(file):
-        """依序嘗試常見編碼，成功即回傳讀取結果"""
+        """
+        依序嘗試常見編碼，並自動偵測標題列位置：
+        - 有些版本第一行是標題（header=0）
+        - 有些版本第一行是說明文字，第二行才是標題（header=1）
+        判斷依據：讀進來的欄位中是否包含「公司代號」
+        """
         last_err = None
-        for enc in ['big5', 'utf-8-sig', 'cp950']:
-            try:
-                file.seek(0)
-                return pd.read_csv(file, encoding=enc, header=1)
-            except (UnicodeDecodeError, UnicodeError) as e:
-                last_err = e
-                continue
-        raise ValueError(f"無法辨識檔案編碼（已嘗試 big5 / utf-8-sig / cp950）：{last_err}")
+        for enc in ['utf-8-sig', 'big5', 'cp950']:
+            for header_row in [0, 1]:
+                try:
+                    file.seek(0)
+                    tmp = pd.read_csv(file, encoding=enc, header=header_row)
+                    tmp.columns = tmp.columns.str.strip().str.replace('\u3000', '', regex=False)
+                    if '公司代號' in tmp.columns:
+                        return tmp
+                except (UnicodeDecodeError, UnicodeError) as e:
+                    last_err = e
+                    continue
+        raise ValueError(f"無法辨識檔案格式（已嘗試多種編碼與標題列位置）：{last_err}")
 
     if uploaded_file is not None:
         try:
