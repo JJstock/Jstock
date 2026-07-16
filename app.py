@@ -285,9 +285,34 @@ with tab4:
     uploaded_file = st.file_uploader("請上傳 CSV 檔案", type=['csv'])
     
     if uploaded_file is not None:
-        # 使用 cp950 編碼讀取證交所 CSV
         try:
-            raw_df = pd.read_csv(uploaded_file, encoding='big5')
+            # 嘗試使用 'big5' 編碼，並加入 errors='ignore' 來忽略無法處理的字元
+            # 這能解決絕大多數證交所檔案的解碼問題
+            raw_df = pd.read_csv(uploaded_file, encoding='big5', errors='ignore')
+            
+            # 檢查是否為證交所格式 (開頭通常有說明文字，這會導致欄位名稱錯誤)
+            # 我們可以搜尋第一行包含 '公司代號' 的位置
+            # 如果發現表頭不在第一行，可以增加 skiprows 參數
+            # 這裡先預設是標準 CSV
+            
+            rename_mapping = {
+                '公司代號': '代號',
+                '公司名稱': '名稱',
+                '營業收入-當月營收': '當月營收',
+                '營業收入-上月比較增減(%)': '月增率(MoM%)',
+                '營業收入-去年同月增減(%)': '年增率(YoY%)',
+                '累計營業收入-前期比較增減(%)': '累計年增率(%)'
+            }
+            
+            # 篩選出存在的欄位
+            processed_df = raw_df[raw_df.columns.intersection(rename_mapping.keys())].rename(columns=rename_mapping)
+            
+            st.session_state.revenue_data = processed_df
+            st.success("資料已成功載入！")
+        except Exception as e:
+            st.error(f"讀取錯誤，請確認檔案編碼：{e}")
+            # 如果還是失敗，可以嘗試改用 'utf-8'，有些編輯器存檔後會變為 utf-8
+            raw_df = pd.read_csv(uploaded_file, encoding='utf-8', errors='ignore')
             
             # 定義欄位對應
             rename_mapping = {
