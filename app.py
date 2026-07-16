@@ -465,8 +465,7 @@ with tab5:
             # 獲取即時報價 (Intraday Quote)
             quote = stock.intraday.quote(symbol=symbol)
             
-            # 獲取公司基本資訊 (包含 EPS 等財報指標)
-            info = client.stock.metadata.info(symbol=symbol)
+            
             
             st.success(f"成功獲取 {symbol} 資料")
             
