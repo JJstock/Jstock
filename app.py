@@ -280,25 +280,18 @@ with tab3:
         
 with tab4:
     st.subheader("📁 上傳每月營收數據")
-    
-    # 1. 檔案上傳與儲存
     uploaded_file = st.file_uploader("請上傳 CSV 檔案", type=['csv'])
     
     if uploaded_file is not None:
         try:
-            # 1. 使用 io 模組處理串流，這在處理上傳檔案時比直接傳 file 給 pd.read_csv 更穩定
-            import io
+            # 【關鍵】證交所 CSV 第一行通常是說明文字，header=1 才會抓到正確的標題行
+            # 使用 big5 編碼讀取
+            raw_df = pd.read_csv(uploaded_file, encoding='big5', header=1, errors='ignore')
             
-            # 使用 'big5' 並設定編碼錯誤處理為 'replace' (如果直接在 open 設定則不會有參數衝突)
-            data = io.TextIOWrapper(uploaded_file, encoding='big5', errors='replace')
-            
-            # 2. 讀取 CSV
-            raw_df = pd.read_csv(data)
-            
-            # 3. 清理欄位名稱 (證交所的 CSV 常有頭尾多餘字元)
+            # 清理欄位名稱（去除前後空白）
             raw_df.columns = raw_df.columns.str.strip()
             
-            # 4. 定義對應欄位 (確認你的 CSV 標題與以下名稱完全一致)
+            # 定義對應
             rename_mapping = {
                 '公司代號': '代號',
                 '公司名稱': '名稱',
@@ -308,75 +301,28 @@ with tab4:
                 '累計營業收入-前期比較增減(%)': '累計年增率(%)'
             }
             
-            # 篩選欄位
-            processed_df = raw_df[raw_df.columns.intersection(rename_mapping.keys())].rename(columns=rename_mapping)
+            # 篩選並重新命名
+            df = raw_df[raw_df.columns.intersection(rename_mapping.keys())].rename(columns=rename_mapping)
             
-            st.session_state.revenue_data = processed_df
+            # 【關鍵】將數據轉為數值格式，否則無法進行 YoY > 20 的篩選
+            for col in ['月增率(MoM%)', '年增率(YoY%)', '累計年增率(%)']:
+                if col in df.columns:
+                    df[col] = pd.to_numeric(df[col], errors='coerce')
+            
+            st.session_state.revenue_data = df
             st.success("資料已成功載入！")
             
         except Exception as e:
-            st.error(f"讀取失敗：{e}")
-            
-            # 檢查是否為證交所格式 (開頭通常有說明文字，這會導致欄位名稱錯誤)
-            # 我們可以搜尋第一行包含 '公司代號' 的位置
-            # 如果發現表頭不在第一行，可以增加 skiprows 參數
-            # 這裡先預設是標準 CSV
-            
-            rename_mapping = {
-                '公司代號': '代號',
-                '公司名稱': '名稱',
-                '營業收入-當月營收': '當月營收',
-                '營業收入-上月比較增減(%)': '月增率(MoM%)',
-                '營業收入-去年同月增減(%)': '年增率(YoY%)',
-                '累計營業收入-前期比較增減(%)': '累計年增率(%)'
-            }
-            
-            # 篩選出存在的欄位
-            processed_df = raw_df[raw_df.columns.intersection(rename_mapping.keys())].rename(columns=rename_mapping)
-            
-            st.session_state.revenue_data = processed_df
-            st.success("資料已成功載入！")
-        except Exception as e:
-            st.error(f"讀取錯誤，請確認檔案編碼：{e}")
-            # 如果還是失敗，可以嘗試改用 'utf-8'，有些編輯器存檔後會變為 utf-8
-            raw_df = pd.read_csv(uploaded_file, encoding='utf-8', errors='ignore')
-            
-            # 定義欄位對應
-            rename_mapping = {
-                '公司代號': '代號',
-                '公司名稱': '名稱',
-                '營業收入-當月營收': '當月營收',
-                '營業收入-上月比較增減(%)': '月增率(MoM%)',
-                '營業收入-去年同月增減(%)': '年增率(YoY%)',
-                '累計營業收入-前期比較增減(%)': '累計年增率(%)'
-            }
-            
-            # 清理資料：只選取存在的欄位並重新命名
-            processed_df = raw_df[rename_mapping.keys()].rename(columns=rename_mapping)
-            
-            # 存入 session_state
-            st.session_state.revenue_data = processed_df
-            st.success("資料已成功載入與處理！")
-        except Exception as e:
-            st.error(f"檔案讀取錯誤，請確認格式是否正確：{e}")
+            st.error(f"讀取失敗：{e}。請檢查檔案格式是否正確。")
 
-    # 2. 如果 session 中已有處理過的資料，進行顯示與篩選
+    # 顯示部分
     if 'revenue_data' in st.session_state:
         df = st.session_state.revenue_data
         
-        # 顯示強勢股篩選
-        st.write("### 📈 營收強勢成長股清單 (YoY > 20% & MoM > 5%)")
-        # 注意：先確保數值轉為 float，避免因為字串無法比對
-        strong_growth = df[(df['年增率(YoY%)'] > 20) & (df['月增率(MoM%)'] > 5)]
+        st.write("### 📈 營收強勢成長股清單")
+        # 篩選邏輯：排除掉 NaN 的數據
+        strong_growth = df[(df['年增率(YoY%)'] > 20) & (df['月增率(MoM%)'] > 5)].dropna()
         st.dataframe(strong_growth, use_container_width=True)
         
         st.subheader("📋 詳細營收數據")
-        st.dataframe(
-            df, 
-            use_container_width=True,
-            column_config={
-                "月增率(MoM%)": st.column_config.NumberColumn(format="%.2f%%"),
-                "年增率(YoY%)": st.column_config.NumberColumn(format="%.2f%%"),
-                "累計年增率(%)": st.column_config.NumberColumn(format="%.2f%%"),
-            }
-        )
+        st.dataframe(df, use_container_width=True)
