@@ -533,7 +533,7 @@ target_date_str = f"{selected_date.year - 1911}/{selected_date.strftime('%m/%d')
 # 4. 篩選邏輯
 if not df_news.empty:
     # 同時過濾「關鍵字」與「日期」
-    mask_text = df_news['主旨'].str.contains(search_query, case=False, na=False, regex=True)
+    mask_text = df_news['主旨 '].str.contains(search_query, case=False, na=False, regex=True)
     mask_date = df_news['發言日期'] == target_date_str
     
     filtered_news = df_news[mask_text & mask_date]
