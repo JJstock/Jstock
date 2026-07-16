@@ -281,23 +281,23 @@ with tab3:
 with tab4:
 # 1. 定義資料抓取函式 (使用官方 OpenAPI)
 @st.cache_data(ttl=3600)  # 每小時更新一次快取，避免重複請求
-def fetch_twse_data():
+    def fetch_twse_data():
     url = "https://openapi.twse.com.tw/v1/opendata/t187ap05_L"
-    try:
+        try:
         response = requests.get(url, timeout=15)
         response.raise_for_status()
         data = response.json()
-        return pd.DataFrame(data)
-    except Exception as e:
+            return pd.DataFrame(data)
+        except Exception as e:
         st.error(f"讀取官方資料失敗: {e}")
-        return pd.DataFrame()
+            return pd.DataFrame()
 
 # 頁面主邏輯
 st.write("### 📊 上市公司營收監測系統")
 
 df = fetch_twse_data()
 
-if not df.empty:
+    if not df.empty:
     # 2. 欄位更名對應
     mapping = {
         '營業收入-上月比較增減(%)': '月增率(MoM%)',
@@ -308,15 +308,15 @@ if not df.empty:
 
     # 3. 數據清理 (將 "--" 或空值轉換為 0)
     cols_to_check = ['年增率(YoY%)', '月增率(MoM%)', '累計年增率(%)']
-    for col in cols_to_check:
+        for col in cols_to_check:
         if col in df.columns:
-            df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
+                df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
 
     # 4. 互動介面：篩選門檻
     col1, col2 = st.columns(2)
-    with col1:
+        with col1:
         yoy_threshold = st.slider("年增率門檻 (%)", 0, 200, 20, step=5)
-    with col2:
+        with col2:
         mom_threshold = st.slider("月增率門檻 (%)", -50, 100, 5, step=5)
 
     # 5. 執行篩選邏輯
@@ -339,7 +339,7 @@ if not df.empty:
     csv = strong_growth.to_csv(index=False).encode('utf-8-sig')
     st.download_button("📥 下載篩選結果 CSV", data=csv, file_name="growth_stocks.csv", mime="text/csv")
 
-else:
+    else:
     st.warning("目前暫無資料，請稍後再試。")
 
 
