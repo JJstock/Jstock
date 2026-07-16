@@ -516,7 +516,7 @@ df_news = st.session_state.news_data
 if not df_news.empty:      
     # 2. 核心搜尋邏輯
     # case=False 表示不區分大小寫，na=False 表示忽略空值
-    mask = df_news['主旨'].str.contains(search_query, case=False, na=False, regex=True)
+    mask = df_news['主旨 '].str.contains(search_query, case=False, na=False, regex=True)
     filtered_news = df_news[mask]
     
     st.caption(f"共找到 {len(filtered_news)} 筆符合 '{search_query}' 的重大訊息")
