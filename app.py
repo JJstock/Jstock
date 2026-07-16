@@ -285,8 +285,11 @@ with tab4:
     if uploaded_file is not None:
         try:
             # 1. 關鍵調整：header=0 讀取標題，但實際上我們的標題在第 1 行 (Python 從 0 開始算)
-            # 使用 encoding='big5' 是正確的，因為這是證交所的標準
-            raw_df = pd.read_csv(uploaded_file, encoding='big5', header=1)
+            
+raw_df = pd.read_csv(uploaded_file, encoding='big5', header=1, errors='ignore')
+
+# 剩下的就是針對欄位做對應即可
+raw_df.columns = raw_df.columns.str.strip()
             
             # 2. 清理名稱：移除標題行前後可能存在的空格
             raw_df.columns = raw_df.columns.str.strip()
