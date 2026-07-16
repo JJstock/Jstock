@@ -433,7 +433,7 @@ st.dataframe(
 )
 
         # 下載按鈕
-        csv = strong_growth.to_csv(index=False).encode('utf-8-sig')
+    csv = strong_growth.to_csv(index=False).encode('utf-8-sig')
         st.download_button(
             "📥 下載篩選結果 CSV",
             data=csv,
