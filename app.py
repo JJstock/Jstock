@@ -356,12 +356,11 @@ with tab4:
         # 篩選邏輯：檢查欄位是否存在
         if all(c in df.columns for c in ['年增率(YoY%)', '月增率(MoM%)']):
             st.write("### 📈 營收強勢成長股清單")
-            
             strong_growth = df[
                 (df['年增率(YoY%)'] > 20) & (df['月增率(MoM%)'] > 5)
             ].dropna(subset=['年增率(YoY%)'])
             st.caption(f"共符合 {len(strong_growth)} 筆")
-            st.dataframe(strong_growth, use_container_width=True)
+            st.dataframe(strong_growth, use_container_width=True, hide_index=True)
 
         # st.subheader("📋 詳細營收數據")
-        # st.dataframe(df, use_container_width=True)
+        # st.dataframe(df, use_container_width=True, hide_index=True)
