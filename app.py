@@ -494,7 +494,7 @@ def fetch_twse_news():
         return pd.DataFrame()
 
 
-    st.subheader("📰 上市每日重大訊息")
+    
     
     if st.button("🔄 同步最新重大訊息"):
         df_news = fetch_twse_news()
