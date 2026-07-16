@@ -282,8 +282,7 @@ with tab3:
 
 
 with tab4:
-    st.subheader("🌐 GitHub 營收數據中心")
-
+    
     # 1. 確保 requests 已匯入 (建議在程式最上方)
     import requests
     from io import StringIO
@@ -308,9 +307,14 @@ with tab4:
         return pd.concat(all_dfs, ignore_index=True) if all_dfs else pd.DataFrame()
 
     # 2. 按鈕邏輯
-    if st.button("🔄 同步 GitHub 最新營收數據"):
+    
         try:
             raw_df = fetch_and_merge_github_data()
+            
+            # --- 除錯除錯：印出欄位名稱 ---
+            st.write("讀取到的欄位名稱為：", raw_df.columns.tolist())
+            # ---------------------------
+
             if not raw_df.empty:
                 # 欄位映射
                 mapping = {
@@ -320,20 +324,30 @@ with tab4:
                     '營業收入-去年同月增減(%)': '年增率(YoY%)',
                     '累計營業收入-前期比較增減(%)': '累計年增率(%)'
                 }
+                
+                # 改進：使用 errors='ignore' 避免找不到欄位就崩潰
                 df = raw_df.rename(columns=mapping)
+                
+                # 確保必須有 '代號'
+                if '代號' not in df.columns:
+                    st.error("找不到 '代號' 欄位，請檢查 CSV 的欄位名稱是否正確。")
+                    st.stop()
+                
+                # 篩選欄位
                 cols_to_keep = ['代號', '名稱', '月增率(MoM%)', '年增率(YoY%)', '累計年增率(%)']
                 df = df[[c for c in cols_to_keep if c in df.columns]]
                 
-                # 篩選數字代號並清理數值
+                # ... (後續清理邏輯保持不變) ...
                 df = df[pd.to_numeric(df['代號'], errors='coerce').notna()]
+                
                 for col in ['月增率(MoM%)', '年增率(YoY%)', '累計年增率(%)']:
                     if col in df.columns:
                         df[col] = pd.to_numeric(df[col].astype(str).str.replace(',', '').replace(r'^-+$', '0', regex=True), errors='coerce')
                 
                 st.session_state.revenue_data = df
-                st.success(f"成功載入！共 {len(df)} 筆公司資料。")
+                st.success(f"成功載入！")
             else:
-                st.error("未能讀取任何數據，請檢查 GitHub 連結。")
+                st.error("未能讀取任何數據。")
         except Exception as e:
             st.error(f"同步過程發生錯誤：{e}")
 
