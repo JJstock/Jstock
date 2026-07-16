@@ -65,7 +65,7 @@ def get_stock_data(ticker):
     }, df
 
 # --- 主程式流程 ---
-tab1, tab2, tab3, tab4 ,tab5,tab6 = st.tabs(["📊 主監控頁面", "🏦 金農專區","📊題材專區", "📈 月營收監控","📈EPS查詢","test"])
+tab1, tab2, tab3, tab4 ,tab5,tab6 = st.tabs(["📊 主監控頁面", "🏦 金農專區","📊題材專區", "📈 月營收監控","📈EPS查詢","📊重訊查詢"])
 
 if 'my_stocks' not in st.session_state:
     st.session_state.my_stocks = {
