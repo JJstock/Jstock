@@ -284,18 +284,24 @@ with tab4:
     
     if uploaded_file is not None:
         try:
-            # 【修正 1】：改用直接讀取，先不帶容易出錯的參數
-            # 證交所資料 header=1 是正確的，因為第 0 行是說明文字
-            raw_df = pd.read_csv(uploaded_file, encoding='big5', header=1)
+            import codecs
             
-            # 【修正 2】：強制清理欄位名稱的隱形空白
+            # 使用 codecs 處理編碼，遇到錯誤直接忽略 (ignore)，這樣就不會報錯了
+            # 然後將處理後的內容轉為記憶體中的 StringIO 物件給 Pandas 讀取
+            import io
+            file_content = codecs.open(uploaded_file, 'r', encoding='big5', errors='ignore').read()
+            csv_data = io.StringIO(file_content)
+            
+            # 讀取 CSV (現在直接讀取 StringIO 物件，編碼問題已在前面解決)
+            raw_df = pd.read_csv(csv_data, header=1)
+            
+            # 清理欄位名稱
             raw_df.columns = raw_df.columns.str.strip()
             
-            # 【偵錯】：如果這裡報錯，請觀察左側顯示的原始欄位名稱
+            # 顯示偵錯用
             st.write("目前系統識別到的欄位：", raw_df.columns.tolist())
             
-            # 【修正 3】：明確對應，不再使用 find_col，直接寫死對應
-            # 請依照上面顯示的清單，確認這些 Key 是否完全正確
+            # 定義精確的映射 (根據你上傳檔案的標題)
             mapping = {
                 '公司代號': '代號',
                 '公司名稱': '名稱',
@@ -306,14 +312,9 @@ with tab4:
             
             df = raw_df.rename(columns=mapping)
             
-            # 只保留需要的欄位
-            cols_to_keep = ['代號', '名稱', '月增率(MoM%)', '年增率(YoY%)', '累計年增率(%)']
-            df = df[[c for c in cols_to_keep if c in df.columns]]
-            
-            # 【修正 4】：確保資料轉為數字，將 '%' 符號或文字轉成 float
+            # 數值轉換
             for col in ['月增率(MoM%)', '年增率(YoY%)', '累計年增率(%)']:
                 if col in df.columns:
-                    # 先將資料轉字串，去除可能存在的逗號，再轉浮點數
                     df[col] = pd.to_numeric(df[col].astype(str).str.replace(',', ''), errors='coerce')
             
             st.session_state.revenue_data = df
