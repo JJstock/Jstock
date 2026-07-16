@@ -444,44 +444,64 @@ with tab4:
         st.info("👆 請先點擊上方按鈕載入資料")
 
 
-    # 您的 API Key
-    API_KEY = "MDk3NzgxZTYtYzUxMC00NTBmLWJjYTYtNDk3NTRlODc4ZjZiIDE2NmY2Y2Y4LTFkYjEtNDFhYy1hNjBkLTUyZDMzOGRjYTA5Mg=="
-    
-    # 使用 cache_resource 來保存 client，避免重複初始化
-@st.cache_resource
-def get_rest_client(api_key):
-    return RestClient(api_key=api_key)
-
 with tab5:
-    st.write("### 📊 即時行情與財報查詢")
+    st.subheader("📊 公司每股盈餘 (EPS) 查詢")
     
-    symbol = st.text_input("輸入股票代號", "2330", key="rest_symbol")
-    
-    if st.button("查詢報價與資訊"):
+    # 1. 抓取 EPS 資料 (建議同樣加上 cache)
+    @st.cache_data(ttl=3600)
+    def fetch_eps_data():
+        url = "https://openapi.twse.com.tw/v1/opendata/t187ap14_L"
         try:
-            client = get_rest_client(API_KEY)
-            stock = client.stock
-            
-            # 獲取即時報價 (Intraday Quote)
-            quote = stock.intraday.quote(symbol=symbol)
-            
-            
-            
-            st.success(f"成功獲取 {symbol} 資料")
-            
-            # 將資料分為兩欄顯示
-            col1, col2 = st.columns(2)
-            col1.metric("公司名稱", quote.get('name', 'N/A'))
-            col2.metric("收盤價", quote.get('closePrice', 'N/A'))
-           
-            
-            # 使用 expander 隱藏複雜 JSON，讓版面清爽
-            with st.expander("查看完整行情與財報資料"):
-                st.json({"quote": quote, "info": info})
-                
-        except Exception as e:
-            st.error(f"查詢失敗: {str(e)}")
+            response = requests.get(url)
+            df = pd.DataFrame(response.json())
+            # 統一移除欄位空格
+            df.columns = df.columns.str.strip()
+            return df
+        except:
+            return pd.DataFrame()
 
+    # 2. 初始化或同步資料
+    if st.button("🔄 更新財報資料"):
+        st.session_state.eps_data = fetch_eps_data()
+        st.success("財報資料庫已更新！")
+    
+    if 'eps_data' not in st.session_state:
+        st.session_state.eps_data = fetch_eps_data()
+
+    # 3. 輸入代號與篩選
+    df_eps = st.session_state.eps_data
+    if not df_eps.empty:
+        stock_code = st.text_input("請輸入公司代號 (例如: 2330)", key="eps_input")
+        
+        if stock_code:
+            # 篩選該公司資料並按年度/季別排序
+            company_data = df_eps[df_eps['公司代號'] == stock_code].sort_values(
+                by=['年度', '季別'], ascending=[False, False]
+            )
+            
+            if not company_data.empty:
+                company_name = company_data.iloc[0]['公司名稱']
+                st.write(f"### {stock_code} {company_name} 歷史 EPS")
+                
+                # 顯示表格 (只顯示關鍵欄位)
+                st.dataframe(
+                    company_data[['年度', '季別', '基本每股盈餘(元)', '營業收入', '稅後淨利']],
+                    use_container_width=True,
+                    hide_index=True
+                )
+                
+                # 下載按鈕
+                csv = company_data.to_csv(index=False, encoding='utf-8-sig').encode('utf-8-sig')
+                st.download_button(
+                    label=f"📥 下載 {stock_code} 財報數據",
+                    data=csv,
+                    file_name=f"EPS_{stock_code}.csv",
+                    mime="text/csv"
+                )
+            else:
+                st.warning("查無此代號資料，請確認輸入是否正確。")
+    else:
+        st.info("尚無資料，請點擊上方按鈕載入。")
 
 def fetch_twse_news():
     url = "https://openapi.twse.com.tw/v1/opendata/t187ap04_L"
