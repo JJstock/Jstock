@@ -287,7 +287,7 @@ with tab4:
     if uploaded_file is not None:
         # 使用 cp950 編碼讀取證交所 CSV
         try:
-            raw_df = pd.read_csv(uploaded_file, encoding='cp950')
+            raw_df = pd.read_csv(uploaded_file, encoding='big5')
             
             # 定義欄位對應
             rename_mapping = {
