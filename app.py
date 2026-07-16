@@ -442,38 +442,28 @@ with tab4:
     else:
         st.info("👆 請先點擊上方按鈕載入資料")
 
+from fugle_marketdata import MarketDataClient
+
 with tab5:
-    st.write("### 📊 EPS 查詢")
+    st.write("### 📊 富果 SDK 財報查詢")
     
-    # 您的 富果 API Key
-    API_KEY = "MDk3NzgxZTYtYzUxMC00NTBmLWJjYTYtNDk3NTRlODc4ZjZiIDE2NmY2Y2Y4LTFkYjEtNDFhYy1hNjBkLTUyZDMzOGRjYTA5Mg=="
-
-    # 定義函式 (縮排必須位於 with tab5 內部)
-    def get_eps_from_fugle(symbol):
-    url = f"https://api.fugle.tw/marketdata/v1.0/stock/info/{symbol}"
-    # 嘗試將 Token 放入 Header 中
-    headers = {"Authorization": f"Bearer {API_KEY}"}
+    # 您的 API Key
+    API_KEY = "請填入您的API_KEY"
     
-    try:
-        response = requests.get(url, headers=headers, timeout=10)
-        # 增加除錯功能：列印出錯誤訊息
-        if response.status_code != 200:
-            st.error(f"錯誤代碼: {response.status_code}, 內容: {response.text}")
-            return None
-        return response.json()
-    except Exception as e:
-        st.error(f"連線異常: {e}")
-        return None
-
-    # Streamlit 輸入與邏輯 (縮排必須與上述一致)
-    symbol = st.text_input("輸入股票代號 (例如 2330)", "2330", key="stock_symbol_input")
-
-    if st.button("查詢財報數據", key="fetch_eps_btn"):
-        with st.spinner('正在從富果 API 獲取資料...'):
-            info = get_eps_from_fugle(symbol)
-            if info:
-                st.success(f"已獲取 {symbol} 最新數據")
-                # 建議：這裡可以進一步解析 JSON，只顯示 EPS 或關鍵欄位
-                st.json(info)
+    # 初始化客戶端
+    client = MarketDataClient(api_key=API_KEY)
+    
+    symbol = st.text_input("輸入股票代號", "2330", key="sdk_symbol")
+    
+    if st.button("查詢財報 (SDK 版)"):
+        try:
+            # 使用 SDK 獲取個股資訊
+            data = client.stock.info(symbol=symbol)
+            
+            if data:
+                st.success(f"成功獲取 {symbol} 資料")
+                st.write(data) # 顯示結構化的數據
             else:
-                st.error("查詢失敗，請檢查 API Key 或股票代號")
+                st.error("查無資料，請確認代號是否正確")
+        except Exception as e:
+            st.error(f"SDK 呼叫失敗: {str(e)}")
