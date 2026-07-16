@@ -6,6 +6,7 @@ from plotly.subplots import make_subplots
 import numpy as np
 import gc
 import time
+from fugle_marketdata import RestClient
 st.set_page_config(page_title="Jstok股價監控", layout="wide")
 st.title("JStok 📊 MA20+60 與財報監控")
 
@@ -448,38 +449,35 @@ with tab4:
     
     # 使用 cache_resource 來保存 client，避免重複初始化
 @st.cache_resource
-def get_client(api_key):
-    return MarketDataClient(api_key=api_key)
+def get_rest_client(api_key):
+    return RestClient(api_key=api_key)
 
 with tab5:
-    st.write("### 📊 富果 SDK 財報查詢")
+    st.write("### 📊 即時行情與財報查詢")
     
-    client = get_client(API_KEY)
+    symbol = st.text_input("輸入股票代號", "2330", key="rest_symbol")
     
-    symbol = st.text_input("輸入股票代號 (例如 2330)", "2330", key="sdk_symbol")
-    
-    if st.button("查詢財報 (SDK 版)"):
-        with st.spinner('正在從富果查詢資料...'):
-            try:
-                # 執行查詢
-                data = client.stock.info(symbol=symbol)
+    if st.button("查詢報價與資訊"):
+        try:
+            client = get_rest_client(API_KEY)
+            stock = client.stock
+            
+            # 獲取即時報價 (Intraday Quote)
+            quote = stock.intraday.quote(symbol=symbol)
+            
+            # 獲取公司基本資訊 (包含 EPS 等財報指標)
+            info = stock.info(symbol=symbol)
+            
+            st.success(f"成功獲取 {symbol} 資料")
+            
+            # 將資料分為兩欄顯示
+            col1, col2 = st.columns(2)
+            col1.metric("當前成交價", quote.get('price', 'N/A'))
+            col2.metric("公司名稱", info.get('name', 'N/A'))
+            
+            # 使用 expander 隱藏複雜 JSON，讓版面清爽
+            with st.expander("查看完整行情與財報資料"):
+                st.json({"quote": quote, "info": info})
                 
-                if data:
-                    st.success(f"成功獲取 {symbol} 資料")
-                    
-                    # 假設您想提取特定欄位，可以這樣做：
-                    # 注意：實際欄位名稱請依據 st.json 顯示的內容調整
-                    col1, col2, col3 = st.columns(3)
-                    
-                    # 範例：顯示基本資料
-                    col1.metric("公司名稱", data.get('name', 'N/A'))
-                    col2.metric("產業別", data.get('industry', 'N/A'))
-                    
-                    # 顯示完整的 JSON 結構以供偵錯
-                    with st.expander("查看原始數據結構"):
-                        st.json(data)
-                else:
-                    st.warning("查無資料，請確認代號是否正確 (例如上市股請用 2330)")
-            except Exception as e:
-                st.error(f"SDK 呼叫失敗，請檢查網路或 API 權限: {str(e)}")
-                
+        except Exception as e:
+            st.error(f"查詢失敗: {str(e)}")
