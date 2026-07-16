@@ -286,24 +286,36 @@ with tab4:
     
     if uploaded_file is not None:
         try:
-            # 1. 直接指定 big5 編碼並跳過可能的說明文字行 (header=0 是預設)
-            # 證交所這類檔案，通常第 0 行就是正確的標題
-            df = pd.read_csv(uploaded_file, encoding='big5', errors='replace')
+            # 1. 使用 io 模組處理串流，這在處理上傳檔案時比直接傳 file 給 pd.read_csv 更穩定
+            import io
             
-            # 2. 清理掉名稱中的空白符號 (常見於 CSV 格式)
-            df.columns = df.columns.str.strip()
+            # 使用 'big5' 並設定編碼錯誤處理為 'replace' (如果直接在 open 設定則不會有參數衝突)
+            data = io.TextIOWrapper(uploaded_file, encoding='big5', errors='replace')
             
-            # 3. 處理數值欄位：有些數值可能包含逗號或非數字字元
-            # 先轉為字串，再過濾掉非數字符號，最後轉成 float
-            for col in ['營業收入-當月營收', '營業收入-上月營收', '營業收入-去年當月營收']:
-                if col in df.columns:
-                    df[col] = pd.to_numeric(df[col].astype(str).str.replace(',', ''), errors='coerce')
+            # 2. 讀取 CSV
+            raw_df = pd.read_csv(data)
             
-            st.session_state.revenue_data = df
-            st.success("資料載入成功！")
+            # 3. 清理欄位名稱 (證交所的 CSV 常有頭尾多餘字元)
+            raw_df.columns = raw_df.columns.str.strip()
+            
+            # 4. 定義對應欄位 (確認你的 CSV 標題與以下名稱完全一致)
+            rename_mapping = {
+                '公司代號': '代號',
+                '公司名稱': '名稱',
+                '營業收入-當月營收': '當月營收',
+                '營業收入-上月比較增減(%)': '月增率(MoM%)',
+                '營業收入-去年同月增減(%)': '年增率(YoY%)',
+                '累計營業收入-前期比較增減(%)': '累計年增率(%)'
+            }
+            
+            # 篩選欄位
+            processed_df = raw_df[raw_df.columns.intersection(rename_mapping.keys())].rename(columns=rename_mapping)
+            
+            st.session_state.revenue_data = processed_df
+            st.success("資料已成功載入！")
             
         except Exception as e:
-            st.error(f"編碼轉換失敗，請改用 utf-8-sig 嘗試：{e}")
+            st.error(f"讀取失敗：{e}")
             
             # 檢查是否為證交所格式 (開頭通常有說明文字，這會導致欄位名稱錯誤)
             # 我們可以搜尋第一行包含 '公司代號' 的位置
