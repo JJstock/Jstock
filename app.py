@@ -422,26 +422,26 @@ styled_df = strong_growth.style.applymap(
 )
 
 # 4. 顯示表格 (只呼叫一次)
-st.dataframe(
-    styled_df,
-    use_container_width=True,
-    hide_index=True,
-    column_config={
-        "年增率(YoY%)": st.column_config.NumberColumn("年增率(YoY%)", format="%.2f%%"),
-        "月增率(MoM%)": st.column_config.NumberColumn("月增率(MoM%)", format="%.2f%%")
-    }
-)
+    st.dataframe(
+        styled_df,
+        use_container_width=True,
+        hide_index=True,
+        column_config={
+            "年增率(YoY%)": st.column_config.NumberColumn("年增率(YoY%)", format="%.2f%%"),
+            "月增率(MoM%)": st.column_config.NumberColumn("月增率(MoM%)", format="%.2f%%")
+        }
+    )
 
-        # 下載按鈕
+    # 下載按鈕 (確保這部分的縮排與 st.dataframe 對齊)
     csv = strong_growth.to_csv(index=False).encode('utf-8-sig')
-        st.download_button(
-            "📥 下載篩選結果 CSV",
-            data=csv,
-            file_name="strong_growth_stocks.csv",
-            mime="text/csv"
-        )
-    else:
-        st.info("👆 請先點擊上方按鈕載入資料")
+    st.download_button(
+        label="📥 下載篩選結果 CSV",
+        data=csv,
+        file_name="strong_growth_stocks.csv",
+        mime="text/csv"
+    )
+else:
+    st.info("👆 請先點擊上方按鈕載入資料")
 
 with tab5:
     st.write("### 📊 EPS查詢")
