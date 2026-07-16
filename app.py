@@ -443,33 +443,32 @@ with tab4:
         st.info("👆 請先點擊上方按鈕載入資料")
 
 with tab5:
-    st.write("### 📊 EPS查詢")
-    # 您的 富果API Key
-    API_KEY = "ZTYzYjFmNDQtMjEyNC00MjgxLTg5NDQtNmEwNjhhMzY4OGY3IDMxZDY5OWJhLWQ1MDUtNDJkYy1hOWI4LTNlYmU3ZmE2MDEwNA=="
-
-    def get_eps_from_fugle(symbol):
-    # 使用 Fugle 的 Snapshot API
-    url = f"https://api.fugle.tw/marketdata/v1.0/stock/info/{symbol}"
-    params = {"apiToken": API_KEY}
+    st.write("### 📊 EPS 查詢")
     
-    try:
-        response = requests.get(url, params=params, timeout=10)
-        if response.status_code == 200:
-            return response.json()
-        else:
+    # 您的 富果 API Key
+    API_KEY = "MDk3NzgxZTYtYzUxMC00NTBmLWJjYTYtNDk3NTRlODc4ZjZiIDE2NmY2Y2Y4LTFkYjEtNDFhYy1hNjBkLTUyZDMzOGRjYTA5Mg=="
+
+    # 定義函式 (縮排必須位於 with tab5 內部)
+    def get_eps_from_fugle(symbol):
+        url = f"https://api.fugle.tw/marketdata/v1.0/stock/info/{symbol}"
+        params = {"apiToken": API_KEY}
+        try:
+            response = requests.get(url, params=params, timeout=10)
+            if response.status_code == 200:
+                return response.json()
             return None
-    except Exception:
-        return None
+        except Exception:
+            return None
 
-# Streamlit 介面
-st.title("台股 EPS 監測系統 (API 版)")
-symbol = st.text_input("輸入股票代號 (例如 2330)", "2330")
+    # Streamlit 輸入與邏輯 (縮排必須與上述一致)
+    symbol = st.text_input("輸入股票代號 (例如 2330)", "2330", key="stock_symbol_input")
 
-# 修正縮排：將按鈕後的邏輯放入縮排內
-if st.button("查詢財報數據"):
-    info = get_eps_from_fugle(symbol)
-    if info:
-        st.success(f"已獲取 {symbol} 最新數據")
-        st.json(info)  # 顯示完整的 JSON 結構
-    else:
-        st.error("查詢失敗，請檢查 API Key 或股票代號")
+    if st.button("查詢財報數據", key="fetch_eps_btn"):
+        with st.spinner('正在從富果 API 獲取資料...'):
+            info = get_eps_from_fugle(symbol)
+            if info:
+                st.success(f"已獲取 {symbol} 最新數據")
+                # 建議：這裡可以進一步解析 JSON，只顯示 EPS 或關鍵欄位
+                st.json(info)
+            else:
+                st.error("查詢失敗，請檢查 API Key 或股票代號")
