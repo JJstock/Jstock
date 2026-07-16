@@ -64,7 +64,7 @@ def get_stock_data(ticker):
     }, df
 
 # --- 主程式流程 ---
-tab1, tab2, tab3 = st.tabs(["📊 主監控頁面", "🏦 金農專區","📊題材專區"])
+tab1, tab2, tab3 = st.tabs(["📊 主監控頁面", "🏦 金農專區","📊題材專區", "📈 月營收監控"])
 
 if 'my_stocks' not in st.session_state:
     st.session_state.my_stocks = {
@@ -277,3 +277,35 @@ with tab3:
     )
     if topic_ticker:
         plot_stock_chart(topic_ticker)
+        
+with tab4:
+    st.subheader("📁 上傳每月營收數據")
+    
+    # 建立上傳檔案介面
+    uploaded_file = st.file_uploader("請上傳 CSV 或 Excel 檔案", type=['csv', 'xlsx'])
+    
+    if uploaded_file is not None:
+        # 讀取檔案
+        if uploaded_file.name.endswith('.csv'):
+            rev_df = pd.read_csv(uploaded_file)
+        else:
+            rev_df = pd.read_excel(uploaded_file)
+        
+        # 顯示預覽
+        st.write("已讀取檔案內容：")
+        st.dataframe(rev_df)
+        
+        # 存入 session_state，這樣切換頁面後資料也不會消失
+        st.session_state.revenue_data = rev_df
+        st.success("資料已成功載入！")
+
+    # 如果有資料，顯示計算後的表格
+    if 'revenue_data' in st.session_state:
+        df = st.session_state.revenue_data
+        
+        # 假設你的 CSV 欄位有：'代號', '當月營收', '去年同期營收'
+        # 計算 YoY
+        df['YoY (%)'] = ((df['當月營收'] - df['去年同期營收']) / df['去年同期營收'] * 100).round(2)
+        
+        st.subheader("📈 營收成長監控")
+        st.dataframe(df, use_container_width=True)
