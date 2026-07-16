@@ -477,7 +477,7 @@ with tab5:
             
             # 使用 expander 隱藏複雜 JSON，讓版面清爽
             with st.expander("查看完整行情與財報資料"):
-                st.json({"info": info})
+                st.json(data)
                 
         except Exception as e:
             st.error(f"查詢失敗: {str(e)}")
