@@ -279,27 +279,12 @@ with tab3:
         plot_stock_chart(topic_ticker)
 
         
-# 1. 將函式定義移到最外面，保持程式乾淨
-def read_twse_csv(file):
-    last_err = None
-    for enc in ['utf-8-sig', 'big5', 'cp950']:
-        for header_row in [0, 1]:
-            try:
-                file.seek(0)
-                tmp = pd.read_csv(file, encoding=enc, header=header_row)
-                tmp.columns = tmp.columns.str.strip().str.replace('\u3000', '', regex=False)
-                if '公司代號' in tmp.columns:
-                    return tmp
-            except Exception as e:
-                last_err = e
-                continue
-    raise ValueError(f"無法辨識檔案格式：{last_err}")
 
-# 2. 在 tab4 中僅負責邏輯處理
 
 with tab4:
     st.subheader("🌐 GitHub 營收數據中心")
 
+    # 1. 函式定義放在外面 (或確保縮排正確)
     @st.cache_data(ttl=3600)
     def fetch_and_merge_github_data():
         urls = [
@@ -309,19 +294,17 @@ with tab4:
         all_dfs = []
         for url in urls:
             try:
-                # 證交所資料通常 header=1
-                df = pd.read_csv(url, encoding='big5', header=1)
+                df = pd.read_csv(url, encoding='cp950', header=1, errors='ignore')
+                df.columns = df.columns.str.strip().str.replace('\u3000', '', regex=False)
                 all_dfs.append(df)
             except Exception as e:
                 st.warning(f"讀取 {url} 失敗: {e}")
         
-        # 合併兩個 CSV
-        merged_df = pd.concat(all_dfs, ignore_index=True)
-        # 清理標題欄位
-        merged_df.columns = merged_df.columns.str.strip().str.replace('\u3000', '', regex=False)
-        return merged_df
+        if not all_dfs:
+            raise ValueError("所有檔案讀取均失敗")
+        return pd.concat(all_dfs, ignore_index=True)
 
-    # 按鈕觸發載入
+    # 2. 按鈕邏輯 (確保它在 tab4 的層級下，不在函式裡面)
     if st.button("🔄 同步 GitHub 最新營收數據"):
         try:
             raw_df = fetch_and_merge_github_data()
@@ -336,7 +319,7 @@ with tab4:
             }
             df = raw_df.rename(columns=mapping)
             
-            # 選取欄位並清理數值
+            # 數值清理
             cols = ['代號', '名稱', '月增率(MoM%)', '年增率(YoY%)', '累計年增率(%)']
             df = df[[c for c in cols if c in df.columns]]
             df = df[pd.to_numeric(df['代號'], errors='coerce').notna()]
@@ -350,10 +333,12 @@ with tab4:
         except Exception as e:
             st.error(f"同步失敗：{e}")
 
-    # 顯示分析結果
+    # 3. 顯示結果 (確保也在 tab4 的層級下)
     if 'revenue_data' in st.session_state:
         df = st.session_state.revenue_data
         st.write("### 📈 營收強勢成長股清單")
+        
+        # 篩選成長股
         strong_growth = df[(df['年增率(YoY%)'] > 20) & (df['月增率(MoM%)'] > 5)].dropna(subset=['年增率(YoY%)'])
         st.dataframe(strong_growth, use_container_width=True, hide_index=True)
 
