@@ -463,7 +463,7 @@ with tab5:
             stock = client.stock
             
             # 獲取即時報價 (Intraday Quote)
-            quote = stock.historical.intraday.quote(symbol=symbol)
+            quote = stock.intraday.quote(symbol=symbol)
             
             
             
