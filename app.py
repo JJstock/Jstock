@@ -448,7 +448,7 @@ with tab5:
     st.write("### 📊 富果 SDK 財報查詢")
     
     # 您的 API Key
-    API_KEY = "請填入您的API_KEY"
+    API_KEY = "MDk3NzgxZTYtYzUxMC00NTBmLWJjYTYtNDk3NTRlODc4ZjZiIDE2NmY2Y2Y4LTFkYjEtNDFhYy1hNjBkLTUyZDMzOGRjYTA5Mg=="
     
     # 初始化客戶端
     client = MarketDataClient(api_key=API_KEY)
