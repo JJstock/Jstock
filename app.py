@@ -285,24 +285,37 @@ with tab4:
     st.subheader("🌐 GitHub 營收數據中心")
 
     # 1. 函式定義放在外面 (或確保縮排正確)
-    @st.cache_data(ttl=3600)
-    def fetch_and_merge_github_data():
-        urls = [
-            "https://raw.githubusercontent.com/JJstock/Jstock/refs/heads/main/TW.csv",
-            "https://raw.githubusercontent.com/JJstock/Jstock/refs/heads/main/TWO.csv"
-        ]
-        all_dfs = []
-        for url in urls:
-            try:
-                df = pd.read_csv(url, encoding='cp950', header=1, errors='ignore')
-                df.columns = df.columns.str.strip().str.replace('\u3000', '', regex=False)
-                all_dfs.append(df)
-            except Exception as e:
-                st.warning(f"讀取 {url} 失敗: {e}")
+    import requests # 確保已匯入 requests 庫
+
+@st.cache_data(ttl=3600)
+def fetch_and_merge_github_data():
+    urls = [
+        "https://raw.githubusercontent.com/JJstock/Jstock/refs/heads/main/TW.csv",
+        "https://raw.githubusercontent.com/JJstock/Jstock/refs/heads/main/TWO.csv"
+    ]
+    all_dfs = []
+    for url in urls:
+        try:
+            # 1. 使用 requests 下載原始內容
+            response = requests.get(url)
+            response.encoding = 'cp950' # 設定解碼方式
+            
+            # 2. 將內容讀入 pandas (使用 io.StringIO)
+            from io import StringIO
+            # 這是最通用的讀取方式，不需依賴 pandas 的 errors 參數
+            df = pd.read_csv(StringIO(response.text), header=1)
+            
+            # 3. 清理欄位
+            df.columns = df.columns.str.strip().str.replace('\u3000', '', regex=False)
+            all_dfs.append(df)
+            
+        except Exception as e:
+            st.warning(f"讀取 {url} 失敗: {e}")
+            
+    if not all_dfs:
+        raise ValueError("所有檔案讀取均失敗")
         
-        if not all_dfs:
-            raise ValueError("所有檔案讀取均失敗")
-        return pd.concat(all_dfs, ignore_index=True)
+    return pd.concat(all_dfs, ignore_index=True)
 
     # 2. 按鈕邏輯 (確保它在 tab4 的層級下，不在函式裡面)
     if st.button("🔄 同步 GitHub 最新營收數據"):
