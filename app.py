@@ -286,7 +286,7 @@ with tab4:
     # 1. 確保 requests 已匯入 (建議在程式最上方)
     import requests
     from io import StringIO
-
+    
     # 定義函式
     @st.cache_data(ttl=3600)
     def fetch_and_merge_github_data():
@@ -305,16 +305,16 @@ with tab4:
             except Exception as e:
                 st.warning(f"讀取 {url} 失敗: {e}")
         return pd.concat(all_dfs, ignore_index=True) if all_dfs else pd.DataFrame()
-
-    # 2. 按鈕邏輯
     
+    # 2. 按鈕邏輯
+    if st.button("🔄 同步最新營收資料", key="sync_revenue_btn"):
         try:
             raw_df = fetch_and_merge_github_data()
             
-            # --- 除錯除錯：印出欄位名稱 ---
+            # --- 除錯：印出欄位名稱 ---
             st.write("讀取到的欄位名稱為：", raw_df.columns.tolist())
             # ---------------------------
-
+            
             if not raw_df.empty:
                 # 欄位映射
                 mapping = {
@@ -325,7 +325,6 @@ with tab4:
                     '累計營業收入-前期比較增減(%)': '累計年增率(%)'
                 }
                 
-                # 改進：使用 errors='ignore' 避免找不到欄位就崩潰
                 df = raw_df.rename(columns=mapping)
                 
                 # 確保必須有 '代號'
@@ -337,24 +336,38 @@ with tab4:
                 cols_to_keep = ['代號', '名稱', '月增率(MoM%)', '年增率(YoY%)', '累計年增率(%)']
                 df = df[[c for c in cols_to_keep if c in df.columns]]
                 
-                # ... (後續清理邏輯保持不變) ...
+                # 清理代號欄位（只保留數字）
                 df = df[pd.to_numeric(df['代號'], errors='coerce').notna()]
                 
+                # 清理百分比欄位
                 for col in ['月增率(MoM%)', '年增率(YoY%)', '累計年增率(%)']:
                     if col in df.columns:
-                        df[col] = pd.to_numeric(df[col].astype(str).str.replace(',', '').replace(r'^-+$', '0', regex=True), errors='coerce')
+                        df[col] = pd.to_numeric(
+                            df[col].astype(str).str.replace(',', '').replace(r'^-+$', '0', regex=True), 
+                            errors='coerce'
+                        )
                 
                 st.session_state.revenue_data = df
-                st.success(f"成功載入！")
+                st.success(f"成功載入！共 {len(df)} 筆資料")
             else:
                 st.error("未能讀取任何數據。")
+                
         except Exception as e:
             st.error(f"同步過程發生錯誤：{e}")
-
+    
     # 3. 顯示結果
     if 'revenue_data' in st.session_state:
         df = st.session_state.revenue_data
+        
         st.write("### 📈 營收強勢成長股清單")
-        strong_growth = df[(df['年增率(YoY%)'] > 20) & (df['月增率(MoM%)'] > 5)].dropna(subset=['年增率(YoY%)'])
+        
+        # 篩選條件（可考慮加入互動式滑桿）
+        strong_growth = df[
+            (df['年增率(YoY%)'] > 20) & 
+            (df['月增率(MoM%)'] > 5)
+        ].dropna(subset=['年增率(YoY%)'])
+        
         st.caption(f"共符合 {len(strong_growth)} 筆")
         st.dataframe(strong_growth, use_container_width=True, hide_index=True)
+    else:
+        st.info("👆 請先點擊上方按鈕載入資料")
