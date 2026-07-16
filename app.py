@@ -281,31 +281,50 @@ with tab3:
 with tab4:
     st.subheader("📁 上傳每月營收數據")
     
-    # 建立上傳檔案介面
-    uploaded_file = st.file_uploader("請上傳 CSV 或 Excel 檔案", type=['csv', 'xlsx'])
+    # 1. 檔案上傳與儲存
+    uploaded_file = st.file_uploader("請上傳 CSV 檔案", type=['csv'])
     
     if uploaded_file is not None:
-        # 讀取檔案
-        if uploaded_file.name.endswith('.csv'):
-            rev_df = pd.read_csv(uploaded_file)
-        else:
-            rev_df = pd.read_excel(uploaded_file)
-        
-        # 顯示預覽
-        st.write("已讀取檔案內容：")
-        st.dataframe(rev_df)
-        
-        # 存入 session_state，這樣切換頁面後資料也不會消失
-        st.session_state.revenue_data = rev_df
-        st.success("資料已成功載入！")
+        # 使用 cp950 編碼讀取證交所 CSV
+        try:
+            raw_df = pd.read_csv(uploaded_file, encoding='cp950')
+            
+            # 定義欄位對應
+            rename_mapping = {
+                '公司代號': '代號',
+                '公司名稱': '名稱',
+                '營業收入-當月營收': '當月營收',
+                '營業收入-上月比較增減(%)': '月增率(MoM%)',
+                '營業收入-去年同月增減(%)': '年增率(YoY%)',
+                '累計營業收入-前期比較增減(%)': '累計年增率(%)'
+            }
+            
+            # 清理資料：只選取存在的欄位並重新命名
+            processed_df = raw_df[rename_mapping.keys()].rename(columns=rename_mapping)
+            
+            # 存入 session_state
+            st.session_state.revenue_data = processed_df
+            st.success("資料已成功載入與處理！")
+        except Exception as e:
+            st.error(f"檔案讀取錯誤，請確認格式是否正確：{e}")
 
-    # 如果有資料，顯示計算後的表格
+    # 2. 如果 session 中已有處理過的資料，進行顯示與篩選
     if 'revenue_data' in st.session_state:
         df = st.session_state.revenue_data
         
-        # 假設你的 CSV 欄位有：'代號', '當月營收', '去年同期營收'
-        # 計算 YoY
-        df['YoY (%)'] = ((df['當月營收'] - df['去年同期營收']) / df['去年同期營收'] * 100).round(2)
+        # 顯示強勢股篩選
+        st.write("### 📈 營收強勢成長股清單 (YoY > 20% & MoM > 5%)")
+        # 注意：先確保數值轉為 float，避免因為字串無法比對
+        strong_growth = df[(df['年增率(YoY%)'] > 20) & (df['月增率(MoM%)'] > 5)]
+        st.dataframe(strong_growth, use_container_width=True)
         
-        st.subheader("📈 營收成長監控")
-        st.dataframe(df, use_container_width=True)
+        st.subheader("📋 詳細營收數據")
+        st.dataframe(
+            df, 
+            use_container_width=True,
+            column_config={
+                "月增率(MoM%)": st.column_config.NumberColumn(format="%.2f%%"),
+                "年增率(YoY%)": st.column_config.NumberColumn(format="%.2f%%"),
+                "累計年增率(%)": st.column_config.NumberColumn(format="%.2f%%"),
+            }
+        )
