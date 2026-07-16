@@ -279,8 +279,23 @@ with tab3:
         plot_stock_chart(topic_ticker)
 
         
-import streamlit as st
-import pandas as pd
+# 1. 將函式定義移到最外面，保持程式乾淨
+def read_twse_csv(file):
+    last_err = None
+    for enc in ['utf-8-sig', 'big5', 'cp950']:
+        for header_row in [0, 1]:
+            try:
+                file.seek(0)
+                tmp = pd.read_csv(file, encoding=enc, header=header_row)
+                tmp.columns = tmp.columns.str.strip().str.replace('\u3000', '', regex=False)
+                if '公司代號' in tmp.columns:
+                    return tmp
+            except Exception as e:
+                last_err = e
+                continue
+    raise ValueError(f"無法辨識檔案格式：{last_err}")
+
+# 2. 在 tab4 中僅負責邏輯處理
 
 with tab4:
     st.subheader("🌐 GitHub 營收數據中心")
@@ -334,10 +349,6 @@ with tab4:
             st.success(f"成功合併載入！共 {len(df)} 筆公司資料。")
         except Exception as e:
             st.error(f"同步失敗：{e}")
-
-    # 顯示與上傳部分 (保留讓使用者仍可上傳自己的檔案)
-    uploaded_file = st.file_uploader("或者：請上傳本地 CSV 檔案", type=['csv'])
-    # ... (此處可沿用你原先處理 uploaded_file 的邏輯) ...
 
     # 顯示分析結果
     if 'revenue_data' in st.session_state:
