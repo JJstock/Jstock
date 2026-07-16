@@ -340,15 +340,17 @@ with tab4:
         except Exception as e:
             st.error(f"讀取失敗，請檢查格式：{e}")
 
-    # 顯示部分
+    # 6. 顯示部分
     if 'revenue_data' in st.session_state:
         df = st.session_state.revenue_data
-        
+
         # 篩選邏輯：檢查欄位是否存在
         if all(c in df.columns for c in ['年增率(YoY%)', '月增率(MoM%)']):
             st.write("### 📈 營收強勢成長股清單")
-            strong_growth = df[(df['年增率(YoY%)'] > 20) & (df['月增率(MoM%)'] > 5)].dropna(subset=['年增率(YoY%)'])
+            strong_growth = df[
+                (df['年增率(YoY%)'] > 20) & (df['月增率(MoM%)'] > 5)
+            ].dropna(subset=['年增率(YoY%)'])
             st.dataframe(strong_growth, use_container_width=True)
-            
+
         st.subheader("📋 詳細營收數據")
         st.dataframe(df, use_container_width=True)
