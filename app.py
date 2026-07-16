@@ -279,7 +279,7 @@ with tab3:
         plot_stock_chart(topic_ticker)
       
 with tab4:
-    st.write("### 📊 全市場營收速覽（自動同步版）")
+    st.write("### 📊 上市櫃6月營收")
 
     import requests
     from io import StringIO
