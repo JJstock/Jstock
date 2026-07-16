@@ -3,6 +3,7 @@ import yfinance as yf
 import pandas as pd
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
+from fugle_marketdata import MarketDataClient
 import numpy as np
 import gc
 import time
@@ -442,29 +443,33 @@ with tab4:
     else:
         st.info("👆 請先點擊上方按鈕載入資料")
 
-pip install fugle-marketdata
-from fugle_marketdata import MarketDataClient
+
+    # 您的 API Key
+    API_KEY = "MDk3NzgxZTYtYzUxMC00NTBmLWJjYTYtNDk3NTRlODc4ZjZiIDE2NmY2Y2Y4LTFkYjEtNDFhYy1hNjBkLTUyZDMzOGRjYTA5Mg=="
+    
+    # 使用 cache_resource 來保存 client，避免重複初始化
+@st.cache_resource
+def get_client(api_key):
+    return MarketDataClient(api_key=api_key)
 
 with tab5:
     st.write("### 📊 富果 SDK 財報查詢")
     
-    # 您的 API Key
-    API_KEY = "MDk3NzgxZTYtYzUxMC00NTBmLWJjYTYtNDk3NTRlODc4ZjZiIDE2NmY2Y2Y4LTFkYjEtNDFhYy1hNjBkLTUyZDMzOGRjYTA5Mg=="
+    client = get_client(API_KEY)
     
-    # 初始化客戶端
-    client = MarketDataClient(api_key=API_KEY)
-    
-    symbol = st.text_input("輸入股票代號", "2330", key="sdk_symbol")
+    symbol = st.text_input("輸入股票代號 (例如 2330)", "2330", key="sdk_symbol")
     
     if st.button("查詢財報 (SDK 版)"):
-        try:
-            # 使用 SDK 獲取個股資訊
-            data = client.stock.info(symbol=symbol)
-            
-            if data:
-                st.success(f"成功獲取 {symbol} 資料")
-                st.write(data) # 顯示結構化的數據
-            else:
-                st.error("查無資料，請確認代號是否正確")
-        except Exception as e:
-            st.error(f"SDK 呼叫失敗: {str(e)}")
+        with st.spinner('正在從富果查詢資料...'):
+            try:
+                # 執行查詢
+                data = client.stock.info(symbol=symbol)
+                
+                if data:
+                    st.success(f"成功獲取 {symbol} 資料")
+                    # 顯示資料，SDK 回傳的是物件，建議轉為 dict 查看
+                    st.json(data) 
+                else:
+                    st.warning("查無資料，請確認代號是否正確 (例如上市股請用 2330)")
+            except Exception as e:
+                st.error(f"SDK 呼叫失敗，請檢查網路或 API 權限: {str(e)}")
