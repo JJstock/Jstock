@@ -281,16 +281,30 @@ with tab3:
 with tab4:
     st.subheader("📁 上傳每月營收數據")
     uploaded_file = st.file_uploader("請上傳證交所格式的 CSV 檔案", type=['csv'])
-    
+
+    def read_twse_csv(file):
+        """依序嘗試常見編碼，成功即回傳讀取結果"""
+        last_err = None
+        for enc in ['big5', 'utf-8-sig', 'cp950']:
+            try:
+                file.seek(0)
+                return pd.read_csv(file, encoding=enc, header=1)
+            except (UnicodeDecodeError, UnicodeError) as e:
+                last_err = e
+                continue
+        raise ValueError(f"無法辨識檔案編碼（已嘗試 big5 / utf-8-sig / cp950）：{last_err}")
+
     if uploaded_file is not None:
         try:
-            # 1. 讀取 CSV：header=1 跳過第一行說明文字，使用 big5 編碼
-            # 注意：在舊版 Pandas 中若報錯，這裡已移除 errors='ignore' 以保持最大相容性
-            raw_df = pd.read_csv(uploaded_file, encoding='big5', header=1)
-            
-            # 2. 清理標題名稱：去除前後隱藏空格
-            raw_df.columns = raw_df.columns.str.strip()
-            
+            # 1. 讀取 CSV：header=1 跳過第一行說明文字，自動嘗試多種編碼
+            raw_df = read_twse_csv(uploaded_file)
+
+            # 2. 清理標題名稱：去除前後隱藏空格與欄位中的全形空格
+            raw_df.columns = (
+                raw_df.columns.str.strip()
+                .str.replace('\u3000', '', regex=False)
+            )
+
             # 3. 建立映射並選取欄位
             mapping = {
                 '公司代號': '代號',
@@ -299,34 +313,42 @@ with tab4:
                 '營業收入-去年同月增減(%)': '年增率(YoY%)',
                 '累計營業收入-前期比較增減(%)': '累計年增率(%)'
             }
-            
+
             # 重新命名並篩選存在的欄位
             df = raw_df.rename(columns=mapping)
             cols_to_keep = ['代號', '名稱', '月增率(MoM%)', '年增率(YoY%)', '累計年增率(%)']
             df = df[[c for c in cols_to_keep if c in df.columns]]
-            
-            # 4. 數據清理：強制轉為數值格式
+
+            # 4. 剔除頁尾備註等非資料列（代號不是數字的列）
+            if '代號' in df.columns:
+                df = df[pd.to_numeric(df['代號'], errors='coerce').notna()]
+
+            # 5. 數據清理：強制轉為數值格式
             for col in ['月增率(MoM%)', '年增率(YoY%)', '累計年增率(%)']:
                 if col in df.columns:
-                    # 去除逗號與特殊符號，將錯誤格式轉為 NaN 後統一處理
-                    df[col] = df[col].replace('-', '0').astype(str).str.replace(',', '')
+                    df[col] = (
+                        df[col].astype(str)
+                        .str.strip()
+                        .str.replace(',', '', regex=False)
+                        .replace(r'^-+$', '0', regex=True)  # 處理 -、--、全形－ 等空值標記
+                    )
                     df[col] = pd.to_numeric(df[col], errors='coerce')
-            
+
             st.session_state.revenue_data = df
-            st.success("成功載入！")
-            
+            st.success(f"成功載入！共 {len(df)} 筆公司資料。")
+
         except Exception as e:
             st.error(f"讀取失敗，請檢查格式：{e}")
 
-    # 5. 顯示結果
+    # 6. 顯示結果
     if 'revenue_data' in st.session_state:
         df = st.session_state.revenue_data
-        
+
         # 篩選強勢成長股 (YoY > 20%)
         if '年增率(YoY%)' in df.columns:
             st.write("### 📈 營收強勢成長股 (YoY > 20%)")
             strong_growth = df[df['年增率(YoY%)'] > 20].dropna(subset=['年增率(YoY%)'])
             st.dataframe(strong_growth, use_container_width=True)
-        
+
         st.subheader("📋 詳細營收數據")
         st.dataframe(df, use_container_width=True)
