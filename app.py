@@ -471,8 +471,9 @@ with tab5:
             
             # 將資料分為兩欄顯示
             col1, col2 = st.columns(2)
-            col1.metric("當前成交價", quote.get('price', 'N/A'))
-            col2.metric("公司名稱", info.get('name', 'N/A'))
+            col1.metric("公司名稱", quote.get('name', 'N/A'))
+            col2.metric("當前成交價", quote.get('closePrice', 'N/A'))
+           
             
             # 使用 expander 隱藏複雜 JSON，讓版面清爽
             with st.expander("查看完整行情與財報資料"):
