@@ -461,7 +461,7 @@ with tab5:
             return pd.DataFrame()
 
     # 2. 初始化或同步資料
-    if st.button("🔄 更新財報資料"):
+    if st.button("🔄 查詢財報資料"):
         st.session_state.eps_data = fetch_eps_data()
         st.success("財報資料庫已更新！")
     
