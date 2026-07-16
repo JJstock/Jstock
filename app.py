@@ -3,7 +3,6 @@ import yfinance as yf
 import pandas as pd
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
-from fugle_marketdata import MarketDataClient
 import numpy as np
 import gc
 import time
