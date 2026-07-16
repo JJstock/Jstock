@@ -284,107 +284,63 @@ with tab3:
 with tab4:
     st.subheader("🌐 GitHub 營收數據中心")
 
-    # 1. 函式定義放在外面 (或確保縮排正確)
-    import requests # 確保已匯入 requests 庫
+    # 1. 確保 requests 已匯入 (建議在程式最上方)
+    import requests
+    from io import StringIO
 
-@st.cache_data(ttl=3600)
-def fetch_and_merge_github_data():
-    urls = [
-        "https://raw.githubusercontent.com/JJstock/Jstock/refs/heads/main/TW.csv",
-        "https://raw.githubusercontent.com/JJstock/Jstock/refs/heads/main/TWO.csv"
-    ]
-    all_dfs = []
-    for url in urls:
-        try:
-            # 1. 使用 requests 下載原始內容
-            response = requests.get(url)
-            response.encoding = 'cp950' # 設定解碼方式
-            
-            # 2. 將內容讀入 pandas (使用 io.StringIO)
-            from io import StringIO
-            # 這是最通用的讀取方式，不需依賴 pandas 的 errors 參數
-            df = pd.read_csv(StringIO(response.text), header=1)
-            
-            # 3. 清理欄位
-            df.columns = df.columns.str.strip().str.replace('\u3000', '', regex=False)
-            all_dfs.append(df)
-            
-        except Exception as e:
-            st.warning(f"讀取 {url} 失敗: {e}")
-            
-    if not all_dfs:
-        raise ValueError("所有檔案讀取均失敗")
-        
-    return pd.concat(all_dfs, ignore_index=True)
+    # 定義函式
+    @st.cache_data(ttl=3600)
+    def fetch_and_merge_github_data():
+        urls = [
+            "https://raw.githubusercontent.com/JJstock/Jstock/refs/heads/main/TW.csv",
+            "https://raw.githubusercontent.com/JJstock/Jstock/refs/heads/main/TWO.csv"
+        ]
+        all_dfs = []
+        for url in urls:
+            try:
+                response = requests.get(url)
+                response.encoding = 'cp950' 
+                df = pd.read_csv(StringIO(response.text), header=1)
+                df.columns = df.columns.str.strip().str.replace('\u3000', '', regex=False)
+                all_dfs.append(df)
+            except Exception as e:
+                st.warning(f"讀取 {url} 失敗: {e}")
+        return pd.concat(all_dfs, ignore_index=True) if all_dfs else pd.DataFrame()
 
-    # 2. 按鈕邏輯 (確保它在 tab4 的層級下，不在函式裡面)
+    # 2. 按鈕邏輯
     if st.button("🔄 同步 GitHub 最新營收數據"):
         try:
             raw_df = fetch_and_merge_github_data()
-            
-            # 欄位映射
-            mapping = {
-                '公司代號': '代號',
-                '公司名稱': '名稱',
-                '營業收入-上月比較增減(%)': '月增率(MoM%)',
-                '營業收入-去年同月增減(%)': '年增率(YoY%)',
-                '累計營業收入-前期比較增減(%)': '累計年增率(%)'
-            }
-            df = raw_df.rename(columns=mapping)
-            
-            # 數值清理
-            raw_df.columns = (
-                raw_df.columns.str.strip()
-                .str.replace('\u3000', '', regex=False)
-            )
-
-            # 3. 建立映射並選取欄位
-            mapping = {
-                '公司代號': '代號',
-                '公司名稱': '名稱',
-                '營業收入-上月比較增減(%)': '月增率(MoM%)',
-                '營業收入-去年同月增減(%)': '年增率(YoY%)',
-                '累計營業收入-前期比較增減(%)': '累計年增率(%)'
-            }
-
-            # 重新命名並篩選存在的欄位
-            df = raw_df.rename(columns=mapping)
-            cols_to_keep = ['代號', '名稱', '月增率(MoM%)', '年增率(YoY%)', '累計年增率(%)']
-            df = df[[c for c in cols_to_keep if c in df.columns]]
-
-            # 4. 剔除頁尾備註等非資料列（代號不是數字的列）
-            if '代號' in df.columns:
+            if not raw_df.empty:
+                # 欄位映射
+                mapping = {
+                    '公司代號': '代號',
+                    '公司名稱': '名稱',
+                    '營業收入-上月比較增減(%)': '月增率(MoM%)',
+                    '營業收入-去年同月增減(%)': '年增率(YoY%)',
+                    '累計營業收入-前期比較增減(%)': '累計年增率(%)'
+                }
+                df = raw_df.rename(columns=mapping)
+                cols_to_keep = ['代號', '名稱', '月增率(MoM%)', '年增率(YoY%)', '累計年增率(%)']
+                df = df[[c for c in cols_to_keep if c in df.columns]]
+                
+                # 篩選數字代號並清理數值
                 df = df[pd.to_numeric(df['代號'], errors='coerce').notna()]
-
-            # 5. 數據清理：強制轉為數值格式
-            for col in ['月增率(MoM%)', '年增率(YoY%)', '累計年增率(%)']:
-                if col in df.columns:
-                    df[col] = (
-                        df[col].astype(str)
-                        .str.strip()
-                        .str.replace(',', '', regex=False)
-                        .replace(r'^-+$', '0', regex=True)  # 處理 -、--、全形－ 等空值標記
-                    )
-                    df[col] = pd.to_numeric(df[col], errors='coerce')
-
-            st.session_state.revenue_data = df
-            st.success(f"成功載入！共 {len(df)} 筆公司資料。")
-
+                for col in ['月增率(MoM%)', '年增率(YoY%)', '累計年增率(%)']:
+                    if col in df.columns:
+                        df[col] = pd.to_numeric(df[col].astype(str).str.replace(',', '').replace(r'^-+$', '0', regex=True), errors='coerce')
+                
+                st.session_state.revenue_data = df
+                st.success(f"成功載入！共 {len(df)} 筆公司資料。")
+            else:
+                st.error("未能讀取任何數據，請檢查 GitHub 連結。")
         except Exception as e:
-            st.error(f"讀取失敗，請檢查格式：{e}")
+            st.error(f"同步過程發生錯誤：{e}")
 
-    # 6. 顯示部分
+    # 3. 顯示結果
     if 'revenue_data' in st.session_state:
         df = st.session_state.revenue_data
-
-        # 篩選邏輯：檢查欄位是否存在
-        if all(c in df.columns for c in ['年增率(YoY%)', '月增率(MoM%)']):
-            st.write("### 📈 營收強勢成長股清單")
-            strong_growth = df[
-                (df['年增率(YoY%)'] > 20) & (df['月增率(MoM%)'] > 5)
-            ].dropna(subset=['年增率(YoY%)'])
-            st.caption(f"共符合 {len(strong_growth)} 筆")
-            st.dataframe(strong_growth, use_container_width=True, hide_index=True)
-
-        # st.subheader("📋 詳細營收數據")
-        # st.dataframe(df, use_container_width=True)
+        st.write("### 📈 營收強勢成長股清單")
+        strong_growth = df[(df['年增率(YoY%)'] > 20) & (df['月增率(MoM%)'] > 5)].dropna(subset=['年增率(YoY%)'])
+        st.caption(f"共符合 {len(strong_growth)} 筆")
+        st.dataframe(strong_growth, use_container_width=True, hide_index=True)
