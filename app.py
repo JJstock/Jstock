@@ -65,7 +65,7 @@ def get_stock_data(ticker):
     }, df
 
 # --- 主程式流程 ---
-tab1, tab2, tab3, tab4 ,tab5= st.tabs(["📊 主監控頁面", "🏦 金農專區","📊題材專區", "📈 月營收監控","📈EPS查詢"])
+tab1, tab2, tab3, tab4 ,tab5,tab6 = st.tabs(["📊 主監控頁面", "🏦 金農專區","📊題材專區", "📈 月營收監控","📈EPS查詢","test"])
 
 if 'my_stocks' not in st.session_state:
     st.session_state.my_stocks = {
@@ -481,6 +481,8 @@ with tab5:
                 
         except Exception as e:
             st.error(f"查詢失敗: {str(e)}")
+
+
 def fetch_twse_news():
     url = "https://openapi.twse.com.tw/v1/opendata/t187ap04_L"
     try:
@@ -495,7 +497,8 @@ def fetch_twse_news():
 
 
     
-    
+with tab6: # 假設這是你目前的 tab
+    st.subheader("📰 上市每日重大訊息")
     if st.button("🔄 同步最新重大訊息"):
         df_news = fetch_twse_news()
         
