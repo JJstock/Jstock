@@ -581,9 +581,9 @@ def show_detail(row):
             
             # 顯示發言人資訊
             col1, col2, col3 = st.columns(3)
-            col1.metric("發言人", info[3])
-            col2.metric("職稱", info[4])
-            col3.metric("電話", info[5])
+            col1.markdown("發言人", info[3])
+            col2.markdown("職稱", info[4])
+            col3.markdown("電話", info[5])
             
             # 顯示說明內容 (將 \n 換行符號轉為 Markdown 顯示)
             st.markdown("### 說明內容")
