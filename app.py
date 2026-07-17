@@ -505,54 +505,39 @@ with tab5:
         st.info("尚無資料，請點擊上方按鈕載入。")
 
 def fetch_twse_news():
-    # 取得現在的時間
     now = datetime.datetime.now()
     year = str(now.year - 1911)
     month = str(now.month)
     day = str(now.day)
     
-    # 【修正 1】使用真實的 API 接口，而非瀏覽器頁面 URL
     url = "https://mops.twse.com.tw/mops/api/t05st02"
-    
-    # 【修正 2】定義正確的 payload (這必須與 API 要求的格式一致)
-    payload = {
-        "year": year,
-        "month": month,
-        "day": day
-    }
+    payload = {"year": year, "month": month, "day": day}
     
     try:
-        # 發送 POST 請求
         response = requests.post(url, json=payload, timeout=10)
+        data = response.json()
         
-        # 檢查回應內容是否為 JSON
-        if response.status_code == 200:
-            data = response.json()
+        if data.get('code') == 200 and 'result' in data:
+            data_list = data['result']['data']
+            if not data_list: return pd.DataFrame()
             
-            # 【修正 3】確認 API 回應結構正確
-            if data.get('code') == 200 and 'result' in data:
-                # 提取資料
-                data_list = data['result']['data']
-                if not data_list:
-                    return pd.DataFrame()
-                
-                df = pd.DataFrame(data_list, 
-                                  columns=['出表日期', '時間', '公司代號', '公司名稱', '主旨', '詳細資訊'])
-                
-                # 處理日期：將 115/07/17 轉為標準 datetime
-                # 注意：這裡 format='%Y%m%d' 比較穩定，但原始資料有 /
-                df['出表日期'] = pd.to_datetime(df['出表日期'].str.replace('/', ''), format='%y%m%d', errors='coerce')
-                
-                return df.drop(columns=['詳細資訊'])
-            else:
-                st.warning(f"API 回應失敗: {data.get('message', '未知錯誤')}")
-        else:
-            st.error(f"連線失敗，狀態碼: {response.status_code}")
+            df = pd.DataFrame(data_list, columns=['出表日期', '時間', '公司代號', '公司名稱', '主旨', '詳細資訊'])
             
+            # --- 統一在這裡處理日期轉換 ---
+            # 假設 API 回傳格式為 '115/07/17'
+            def parse_date(date_str):
+                try:
+                    y, m, d = map(int, date_str.split('/'))
+                    return datetime.date(y + 1911, m, d)
+                except: return None
+            
+            df['出表日期'] = df['出表日期'].apply(parse_date)
+            df = df.dropna(subset=['出表日期'])
+            
+            return df.drop(columns=['詳細資訊'])
         return pd.DataFrame()
-        
     except Exception as e:
-        st.error(f"程式執行異常: {e}")
+        st.error(f"抓取失敗: {e}")
         return pd.DataFrame()
 
 
@@ -560,42 +545,20 @@ def fetch_twse_news():
 with tab6:
     st.subheader("📰 上市每日重大訊息")
     
-    # 1. 資料同步與清理
     if st.button("🔄 同步最新重大訊息"):
-        df_temp = fetch_twse_news()
-        if not df_temp.empty:
-            df_temp.columns = df_temp.columns.str.strip()
-            
-            # --- 針對 "1150717" 格式的處理 ---
-            def parse_tw_date(val):
-                s = str(val).strip()
-                # 確保長度正確 (例如 1150717 為 7 位數)
-                if len(s) == 7:
-                    y = int(s[:3]) + 1911
-                    m = int(s[3:5])
-                    d = int(s[5:])
-                    return pd.Timestamp(year=y, month=m, day=d).date()
-                else:
-                    return None # 或處理其他異常格式
-
-            df_temp['出表日期'] = df_temp['出表日期'].apply(parse_tw_date)
-            
-            # 過濾掉轉換失敗的行
-            df_temp = df_temp.dropna(subset=['出表日期'])
-            
-            st.session_state.news_data = df_temp
-            st.success("資料已更新！")
+        with st.spinner('正在同步資料...'):
+            df_temp = fetch_twse_news()
+            if not df_temp.empty:
+                st.session_state.news_data = df_temp
+                st.success(f"同步完成，共獲取 {len(df_temp)} 筆資料")
+            else:
+                st.warning("目前無資料或同步失敗")
 
     # 2. 篩選介面
     if 'news_data' in st.session_state:
         df_news = st.session_state.news_data
         
-        # 確保資料為最新的格式 (防止之前儲存的舊資料沒有轉換日期)
-        if df_news['出表日期'].dtype != 'object': 
-            df_news['出表日期'] = pd.to_datetime(df_news['出表日期']).dt.date
-
         st.subheader("🔍 重訊篩選條件")
-        
         col1, col2 = st.columns(2)
         
         with col1:
@@ -605,15 +568,12 @@ with tab6:
             min_date = df_news['出表日期'].min()
             max_date = df_news['出表日期'].max()
             
-            # 設定預設值以防止空值錯誤
-            default_start = min_date if min_date is not None else datetime.date.today()
-            default_end = max_date if max_date is not None else datetime.date.today()
-            
+            # 使用列表，確保 date_input 收到的是 date 型態而非 datetime
             date_range = st.date_input(
                 "選擇出表日期區間",
-                value=(default_start, default_end),
-                min_value=default_start,
-                max_value=default_end
+                value=(min_date, max_date),
+                min_value=min_date,
+                max_value=max_date
             )
 
         # 3. 篩選邏輯
@@ -629,20 +589,8 @@ with tab6:
         
         # 4. 顯示結果
         st.caption(f"共搜尋到 {len(filtered_news)} 筆相關重訊")
-        
-        st.dataframe(
-            filtered_news[['出表日期', '公司代號', '公司名稱', '主旨']], 
-            use_container_width=True,
-            hide_index=True
-        )
+        st.dataframe(filtered_news, use_container_width=True, hide_index=True)
             
         # 5. 下載功能
         csv = filtered_news.to_csv(index=False, encoding='utf-8-sig').encode('utf-8-sig')
-        st.download_button(
-            "📥 下載篩選結果 CSV", 
-            data=csv, 
-            file_name="filtered_news.csv", 
-            mime="text/csv"
-        )
-    else:
-        st.info("請先點擊上方按鈕載入資料。")
+        st.download_button("📥 下載篩選結果 CSV", data=csv, file_name="filtered_news.csv", mime="text/csv")
