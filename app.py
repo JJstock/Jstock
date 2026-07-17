@@ -6,6 +6,7 @@ from plotly.subplots import make_subplots
 import numpy as np
 import gc
 import time
+import datetime
 from fugle_marketdata import RestClient
 st.set_page_config(page_title="Jstok股價監控", layout="wide")
 st.title("JStok 📊 MA20+60 與財報監控")
