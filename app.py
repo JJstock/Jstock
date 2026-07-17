@@ -524,66 +524,69 @@ with tab6:
     if st.button("🔄 同步最新重大訊息"):
         df_temp = fetch_twse_news()
         if not df_temp.empty:
-            df_temp.columns = df_temp.columns.str.strip()  # 移除空格
+            df_temp.columns = df_temp.columns.str.strip()
+            # 【關鍵步驟】確保日期欄位為 datetime 型態，避免比對錯誤
+            df_temp['出表日期'] = pd.to_datetime(df_temp['出表日期']).dt.date
             st.session_state.news_data = df_temp
             st.success("資料已更新！")
 
     # 2. 篩選介面
-if 'news_data' in st.session_state:
-    df_news = st.session_state.news_data
-    
-    st.subheader("🔍 重訊篩選條件")
-    
-    # 建立一個兩欄位配置，讓版面更整潔
-    col1, col2 = st.columns(2)
-    
-    with col1:
-        search_query = st.text_input("輸入關鍵字 (支援 | 分隔)", value="自結|財報|財務報告|上半年|第二季")
-    
-    with col2:
-        # 取得資料中的日期範圍作為預設值
-        min_date = df_news['出表日期'].min()
-        max_date = df_news['出表日期'].max()
+    if 'news_data' in st.session_state:
+        df_news = st.session_state.news_data
         
-        # 建立日期區間選擇器
-        date_range = st.date_input(
-            "選擇出表日期區間",
-            value=(min_date, max_date),
-            min_value=min_date,
-            max_value=max_date
-        )
+        # 確保資料為最新的格式 (防止之前儲存的舊資料沒有轉換日期)
+        if df_news['出表日期'].dtype != 'object': 
+            df_news['出表日期'] = pd.to_datetime(df_news['出表日期']).dt.date
 
-    # 3. 篩選邏輯
-    # 關鍵字篩選
-    mask_text = df_news['主旨'].str.contains(search_query, case=False, na=False, regex=True)
-    
-    # 日期篩選 (檢查是否有選取完整區間)
-    if isinstance(date_range, tuple) and len(date_range) == 2:
-        start_date, end_date = date_range
-        # 將字串格式的日期轉為 datetime 進行比較 (假設原本就是 datetime 型態，若為字串需先轉換)
-        mask_date = (df_news['出表日期'] >= start_date) & (df_news['出表日期'] <= end_date)
-    else:
-        mask_date = True # 若未選完整區間則不進行日期過濾
+        st.subheader("🔍 重訊篩選條件")
         
-    # 合併篩選條件
-    filtered_news = df_news[mask_text & mask_date]
-    
-    # 4. 顯示結果
-    st.caption(f"共搜尋到 {len(filtered_news)} 筆相關重訊")
-    
-    st.dataframe(
-        filtered_news[['出表日期', '公司代號', '公司名稱', '主旨']], 
-        use_container_width=True,
-        hide_index=True
-    )
+        col1, col2 = st.columns(2)
         
+        with col1:
+            search_query = st.text_input("輸入關鍵字 (支援 | 分隔)", value="自結|財報|財務報告|上半年|第二季")
+        
+        with col2:
+            min_date = df_news['出表日期'].min()
+            max_date = df_news['出表日期'].max()
+            
+            # 設定預設值以防止空值錯誤
+            default_start = min_date if min_date is not None else datetime.date.today()
+            default_end = max_date if max_date is not None else datetime.date.today()
+            
+            date_range = st.date_input(
+                "選擇出表日期區間",
+                value=(default_start, default_end),
+                min_value=default_start,
+                max_value=default_end
+            )
+
+        # 3. 篩選邏輯
+        mask_text = df_news['主旨'].str.contains(search_query, case=False, na=False, regex=True)
+        
+        if isinstance(date_range, tuple) and len(date_range) == 2:
+            start_date, end_date = date_range
+            mask_date = (df_news['出表日期'] >= start_date) & (df_news['出表日期'] <= end_date)
+        else:
+            mask_date = True
+            
+        filtered_news = df_news[mask_text & mask_date]
+        
+        # 4. 顯示結果
+        st.caption(f"共搜尋到 {len(filtered_news)} 筆相關重訊")
+        
+        st.dataframe(
+            filtered_news[['出表日期', '公司代號', '公司名稱', '主旨']], 
+            use_container_width=True,
+            hide_index=True
+        )
+            
         # 5. 下載功能
-    csv = filtered_news.to_csv(index=False, encoding='utf-8-sig').encode('utf-8-sig')
-    st.download_button(
+        csv = filtered_news.to_csv(index=False, encoding='utf-8-sig').encode('utf-8-sig')
+        st.download_button(
             "📥 下載篩選結果 CSV", 
             data=csv, 
             file_name="filtered_news.csv", 
             mime="text/csv"
         )
-     else:
+    else:
         st.info("請先點擊上方按鈕載入資料。")
