@@ -525,8 +525,24 @@ with tab6:
         df_temp = fetch_twse_news()
         if not df_temp.empty:
             df_temp.columns = df_temp.columns.str.strip()
-            # 【關鍵步驟】確保日期欄位為 datetime 型態，避免比對錯誤
-            df_temp['出表日期'] = pd.to_datetime(df_temp['出表日期']).dt.date
+            
+            # --- 針對 "1150717" 格式的處理 ---
+            def parse_tw_date(val):
+                s = str(val).strip()
+                # 確保長度正確 (例如 1150717 為 7 位數)
+                if len(s) == 7:
+                    y = int(s[:3]) + 1911
+                    m = int(s[3:5])
+                    d = int(s[5:])
+                    return pd.Timestamp(year=y, month=m, day=d).date()
+                else:
+                    return None # 或處理其他異常格式
+
+            df_temp['出表日期'] = df_temp['出表日期'].apply(parse_tw_date)
+            
+            # 過濾掉轉換失敗的行
+            df_temp = df_temp.dropna(subset=['出表日期'])
+            
             st.session_state.news_data = df_temp
             st.success("資料已更新！")
 
