@@ -586,7 +586,13 @@ with tab6:
     
     # 1. 同步按鈕
     if st.button("🔄 同步最新重大訊息"):
-        # ... (同步邏輯同前) ...
+        with st.spinner('正在同步資料...'):
+            df_temp = fetch_twse_news()
+            if not df_temp.empty:
+                st.session_state.news_data = df_temp
+                st.success(f"同步完成，共獲取 {len(df_temp)} 筆資料")
+            else:
+                st.warning("目前無資料或同步失敗")
 
     if 'news_data' in st.session_state:
         df_news = st.session_state.news_data
