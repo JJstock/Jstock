@@ -504,15 +504,54 @@ with tab5:
         st.info("尚無資料，請點擊上方按鈕載入。")
 
 def fetch_twse_news():
-    url = "https://openapi.twse.com.tw/v1/opendata/t187ap04_L"
+    # 取得現在的時間
+    now = datetime.datetime.now()
+    year = str(now.year - 1911)
+    month = str(now.month)
+    day = str(now.day)
+    
+    # 【修正 1】使用真實的 API 接口，而非瀏覽器頁面 URL
+    url = "https://mops.twse.com.tw/mops/api/t05st02"
+    
+    # 【修正 2】定義正確的 payload (這必須與 API 要求的格式一致)
+    payload = {
+        "year": year,
+        "month": month,
+        "day": day
+    }
+    
     try:
-        response = requests.get(url)
-        response.raise_for_status()
-        data = response.json()
-        df = pd.DataFrame(data)
-        return df
+        # 發送 POST 請求
+        response = requests.post(url, json=payload, timeout=10)
+        
+        # 檢查回應內容是否為 JSON
+        if response.status_code == 200:
+            data = response.json()
+            
+            # 【修正 3】確認 API 回應結構正確
+            if data.get('code') == 200 and 'result' in data:
+                # 提取資料
+                data_list = data['result']['data']
+                if not data_list:
+                    return pd.DataFrame()
+                
+                df = pd.DataFrame(data_list, 
+                                  columns=['出表日期', '時間', '公司代號', '公司名稱', '主旨', '詳細資訊'])
+                
+                # 處理日期：將 115/07/17 轉為標準 datetime
+                # 注意：這裡 format='%Y%m%d' 比較穩定，但原始資料有 /
+                df['出表日期'] = pd.to_datetime(df['出表日期'].str.replace('/', ''), format='%y%m%d', errors='coerce')
+                
+                return df.drop(columns=['詳細資訊'])
+            else:
+                st.warning(f"API 回應失敗: {data.get('message', '未知錯誤')}")
+        else:
+            st.error(f"連線失敗，狀態碼: {response.status_code}")
+            
+        return pd.DataFrame()
+        
     except Exception as e:
-        st.error(f"無法獲取重大訊息資料: {e}")
+        st.error(f"程式執行異常: {e}")
         return pd.DataFrame()
 
 
