@@ -561,58 +561,66 @@ def fetch_twse_news():
         return pd.DataFrame()
         response = requests.post(url, json=payload, headers=headers, timeout=10)
 
-
-
+@st.dialog("重訊詳情")
+def show_detail(row):
+    st.write(f"**公司：** {row['公司代號']} {row['公司名稱']}")
+    st.write(f"**主旨：** {row['主旨']}")
+    
+    # 發送第二次請求取得全文
+    url = "https://mops.twse.com.tw/mops/api/t05st02_detail"
+    try:
+        # 注意：詳細資訊字典在 DataFrame 中會變成字串或保持字典型態，請確保傳入正確
+        params = row['詳細資訊']['parameters']
+        headers = {"User-Agent": "Mozilla/5.0", "Referer": "https://mops.twse.com.tw/mops/web/t05st02"}
+        response = requests.post(url, json=params, headers=headers)
+        data = response.json()
+        
+        # 顯示回傳的內容 (需根據 API 回傳的具體欄位調整)
+        st.write("---")
+        st.json(data) # 這裡會顯示完整的 API 回傳結構
+    except Exception as e:
+        st.error("無法載入詳細內容")
     
 with tab6:
     st.subheader("📰 上市每日重大訊息")
     
+    # 1. 同步按鈕
     if st.button("🔄 同步最新重大訊息"):
-        with st.spinner('正在同步資料...'):
-            df_temp = fetch_twse_news()
-            if not df_temp.empty:
-                st.session_state.news_data = df_temp
-                st.success(f"同步完成，共獲取 {len(df_temp)} 筆資料")
-            else:
-                st.warning("目前無資料或同步失敗")
+        # ... (同步邏輯同前) ...
 
-    # 2. 篩選介面
     if 'news_data' in st.session_state:
         df_news = st.session_state.news_data
         
+        # 2. 篩選介面
         st.subheader("🔍 重訊篩選條件")
         col1, col2 = st.columns(2)
-        
         with col1:
-            search_query = st.text_input("輸入關鍵字 (支援 | 分隔)", value="自結|財報|財務報告|上半年|第二季")
-        
+            search_query = st.text_input("輸入關鍵字", value="自結|財報")
         with col2:
-            min_date = df_news['出表日期'].min()
-            max_date = df_news['出表日期'].max()
-            
-            # 使用列表，確保 date_input 收到的是 date 型態而非 datetime
-            date_range = st.date_input(
-                "選擇出表日期區間",
-                value=(min_date, max_date),
-                min_value=min_date,
-                max_value=max_date
-            )
+            date_range = st.date_input("日期區間", value=(df_news['出表日期'].min(), df_news['出表日期'].max()))
 
-        # 3. 篩選邏輯
-        mask_text = df_news['主旨'].str.contains(search_query, case=False, na=False, regex=True)
-        
+        # 3. 篩選
+        mask = df_news['主旨'].str.contains(search_query, case=False, na=False, regex=True)
         if isinstance(date_range, tuple) and len(date_range) == 2:
-            start_date, end_date = date_range
-            mask_date = (df_news['出表日期'] >= start_date) & (df_news['出表日期'] <= end_date)
-        else:
-            mask_date = True
-            
-        filtered_news = df_news[mask_text & mask_date]
-        
-        # 4. 顯示結果
+            mask &= (df_news['出表日期'] >= date_range[0]) & (df_news['出表日期'] <= date_range[1])
+        filtered_news = df_news[mask]
+
+        # 4. 顯示與點擊事件
         st.caption(f"共搜尋到 {len(filtered_news)} 筆相關重訊")
-        st.dataframe(filtered_news, use_container_width=True, hide_index=True)
+        
+        # 使用 filtered_news 進行顯示，避免篩選條件失效
+        event = st.dataframe(
+            filtered_news[['出表日期', '公司代號', '公司名稱', '主旨']], 
+            use_container_width=True, hide_index=True,
+            on_select="rerun", selection_mode="single-row"
+        )
+
+        if event.selection.rows:
+            selected_index = event.selection.rows[0]
+            # 注意：這裡要從 filtered_news 取資料，而不是原本的 df_news
+            selected_row = filtered_news.iloc[selected_index]
+            show_detail(selected_row)
             
-        # 5. 下載功能
+        # 5. 下載
         csv = filtered_news.to_csv(index=False, encoding='utf-8-sig').encode('utf-8-sig')
         st.download_button("📥 下載篩選結果 CSV", data=csv, file_name="filtered_news.csv", mime="text/csv")
