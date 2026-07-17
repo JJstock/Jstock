@@ -579,7 +579,7 @@ if 'news_data' in st.session_state:
         
         # 5. 下載功能
     csv = filtered_news.to_csv(index=False, encoding='utf-8-sig').encode('utf-8-sig')
-        st.download_button(
+    st.download_button(
             "📥 下載篩選結果 CSV", 
             data=csv, 
             file_name="filtered_news.csv", 
