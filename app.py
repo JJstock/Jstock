@@ -543,7 +543,7 @@ with tab6:
         st.caption(f"共搜尋到 {len(filtered_news)} 筆相關重訊")
         
         st.dataframe(
-            filtered_news[['發言日期', '公司代號', '公司名稱', '主旨 ']], 
+            filtered_news[['發言日期', '公司代號', '公司名稱', '主旨']], 
             use_container_width=True,
             hide_index=True
         )
