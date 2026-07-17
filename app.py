@@ -510,59 +510,51 @@ def fetch_twse_news():
     month = str(now.month)
     day = str(now.day)
     
-    # 這是正確的後端 API 端點
     url = "https://mops.twse.com.tw/mops/api/t05st02"
-    
-    # 這是 MOPS API 要求的參數格式 (注意這裡不是 json=，而是 data=)
-    payload = {
-        "year": year,
-        "month": month,
-        "day": day
-    }
-    
-    # 【關鍵】模擬瀏覽器 Header，否則會被網站擋下
+    payload = {"year": year, "month": month, "day": day}
     headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
         "Referer": "https://mops.twse.com.tw/mops/web/t05st02",
-        "Content-Type": "application/json" # 告訴伺服器我們發送的是 JSON
+        "Content-Type": "application/json"
     }
     
     try:
-        # 使用 data 參數並將 payload 轉為 json 字串
         response = requests.post(url, json=payload, headers=headers, timeout=10)
-        
-        # 除錯用：印出狀態碼
         if response.status_code != 200:
-            st.error(f"伺服器回應異常: {response.status_code}")
             return pd.DataFrame()
             
         data = response.json()
-        
         if data.get('code') == 200 and 'result' in data:
-           data_list = data['result']['data']
-        # 這裡的 columns 必須包含 '詳細資訊'
-           df = pd.DataFrame(data_list, columns=['出表日期', '時間', '公司代號', '公司名稱', '主旨', '詳細資訊'])
-        
-        # 不要在這裡執行 df.drop(columns=['詳細資訊'])
-        # 而是保留它，讓後續能傳遞給 show_detail
-           return df
+            data_list = data['result']['data']
+            if not data_list: return pd.DataFrame()
             
-            # 處理日期 (轉換 115/07/17 格式)
+            # 1. 建立 DataFrame
+            df = pd.DataFrame(data_list, columns=['出表日期', '時間', '公司代號', '公司名稱', '主旨', '詳細資訊'])
+            
+            # 2. 處理日期：轉換為日期物件 (一定要在 return 之前做)
             def parse_date(date_str):
                 try:
-                    y, m, d = map(int, date_str.split('/'))
+                    y, m, d = map(int, str(date_str).split('/'))
                     return datetime.date(y + 1911, m, d)
                 except: return None
             
             df['出表日期'] = df['出表日期'].apply(parse_date)
-            return df.dropna(subset=['出表日期']).drop(columns=['詳細資訊'])
-        
+            df = df.dropna(subset=['出表日期'])
+            
+            # 3. 檢查「詳細資訊」是否為字典型態 (API 回傳有時是字串，需轉為字典)
+            # 如果它已經是字典就不需要轉，如果是字串才轉
+            import json
+            if isinstance(df['詳細資訊'].iloc[0], str):
+                df['詳細資訊'] = df['詳細資訊'].apply(json.loads)
+            
+            # 【關鍵】這裡才 return，確保資料已經清洗過且包含完整欄位
+            return df 
+            
         return pd.DataFrame()
         
     except Exception as e:
         st.error(f"連線細節錯誤: {e}")
         return pd.DataFrame()
-        response = requests.post(url, json=payload, headers=headers, timeout=10)
 
 @st.dialog("重訊詳情", width="large")
 def show_detail(row):
