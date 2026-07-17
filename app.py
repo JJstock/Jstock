@@ -539,13 +539,13 @@ def fetch_twse_news():
         data = response.json()
         
         if data.get('code') == 200 and 'result' in data:
-        data_list = data['result']['data']
+           data_list = data['result']['data']
         # 這裡的 columns 必須包含 '詳細資訊'
-        df = pd.DataFrame(data_list, columns=['出表日期', '時間', '公司代號', '公司名稱', '主旨', '詳細資訊'])
+           df = pd.DataFrame(data_list, columns=['出表日期', '時間', '公司代號', '公司名稱', '主旨', '詳細資訊'])
         
         # 不要在這裡執行 df.drop(columns=['詳細資訊'])
         # 而是保留它，讓後續能傳遞給 show_detail
-        return df
+           return df
             
             # 處理日期 (轉換 115/07/17 格式)
             def parse_date(date_str):
