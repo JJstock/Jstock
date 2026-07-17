@@ -563,36 +563,43 @@ def fetch_twse_news():
 
 @st.dialog("重訊詳情", width="large")
 def show_detail(row):
-    # 這是該 API 專用的路徑
     url = "https://mops.twse.com.tw/mops/api/t05st02_detail"
-    
-    # 這是您提供的結構
-    params = row['詳細資訊']['parameters']
-    
-    # 【關鍵】完整的 Header 設定，特別是 Content-Type 與 Referer
     headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-        "Referer": "https://mops.twse.com.tw/mops/web/t05st02",
-        "Content-Type": "application/json; charset=UTF-8",
-        "Origin": "https://mops.twse.com.tw"
+        "User-Agent": "Mozilla/5.0",
+        "Referer": "https://mops.twse.com.tw/mops/web/t05st02"
     }
     
     try:
-        # 使用 requests.post 發送請求
-        response = requests.post(url, json=params, headers=headers, timeout=10)
+        # 發送請求
+        params = row['詳細資訊']['parameters']
+        response = requests.post(url, json=params, headers=headers)
         
         if response.status_code == 200:
             data = response.json()
+            # 從 JSON 中提取關鍵資料
+            info = data['result']['data'][0]
             
-            # 假設 API 回傳格式為 {'result': {'data': ...}} 或直接包含內容
-            st.write(f"### {row['公司名稱']} - {row['主旨']}")
-            st.json(data) # 這裡將詳細內容顯示出來
+            # 顯示標題區塊
+            st.subheader(f"{row['公司名稱']} ({row['公司代號']})")
+            st.markdown(f"**主旨：** {info[6]}")
+            st.divider()
+            
+            # 顯示發言人資訊
+            col1, col2, col3 = st.columns(3)
+            col1.metric("發言人", info[3])
+            col2.metric("職稱", info[4])
+            col3.metric("電話", info[5])
+            
+            # 顯示說明內容 (將 \n 換行符號轉為 Markdown 顯示)
+            st.markdown("### 說明內容")
+            st.text(info[9]) 
+            
+            st.caption(f"事實發生日：{info[8]}")
         else:
-            st.error(f"無法存取詳細資料 (錯誤碼: {response.status_code})")
-            st.write("建議：由於證交所 API 保護機制，若無法直接載入，請改用連結查看。")
+            st.error("無法取得詳細內容")
             
     except Exception as e:
-        st.error(f"連線錯誤: {e}")
+        st.error(f"解析資料時發生錯誤: {e}")
     
 with tab6:
     st.subheader("📰 上市每日重大訊息")
@@ -614,7 +621,7 @@ with tab6:
         st.subheader("🔍 重訊篩選條件")
         col1, col2 = st.columns(2)
         with col1:
-            search_query = st.text_input("輸入關鍵字", value="自結|財報")
+            search_query = st.text_input("輸入關鍵字", value="自結|財報|財務|上半年|第二季")
         with col2:
             date_range = st.date_input("日期區間", value=(df_news['出表日期'].min(), df_news['出表日期'].max()))
 
