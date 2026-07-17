@@ -585,5 +585,5 @@ if 'news_data' in st.session_state:
             file_name="filtered_news.csv", 
             mime="text/csv"
         )
-    else:
+     else:
         st.info("請先點擊上方按鈕載入資料。")
