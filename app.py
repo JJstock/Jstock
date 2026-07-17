@@ -560,7 +560,7 @@ def fetch_twse_news():
         st.error(f"連線細節錯誤: {e}")
         return pd.DataFrame()
         response = requests.post(url, json=payload, headers=headers, timeout=10)
-st.write(response.text) # 在 Streamlit 上印出回傳內容
+
 
 
     
