@@ -561,25 +561,38 @@ def fetch_twse_news():
         return pd.DataFrame()
         response = requests.post(url, json=payload, headers=headers, timeout=10)
 
-@st.dialog("重訊詳情")
+@st.dialog("重訊詳情", width="large")
 def show_detail(row):
-    st.write(f"**公司：** {row['公司代號']} {row['公司名稱']}")
-    st.write(f"**主旨：** {row['主旨']}")
-    
-    # 發送第二次請求取得全文
+    # 這是該 API 專用的路徑
     url = "https://mops.twse.com.tw/mops/api/t05st02_detail"
+    
+    # 這是您提供的結構
+    params = row['詳細資訊']['parameters']
+    
+    # 【關鍵】完整的 Header 設定，特別是 Content-Type 與 Referer
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "Referer": "https://mops.twse.com.tw/mops/web/t05st02",
+        "Content-Type": "application/json; charset=UTF-8",
+        "Origin": "https://mops.twse.com.tw"
+    }
+    
     try:
-        # 注意：詳細資訊字典在 DataFrame 中會變成字串或保持字典型態，請確保傳入正確
-        params = row['詳細資訊']['parameters']
-        headers = {"User-Agent": "Mozilla/5.0", "Referer": "https://mops.twse.com.tw/mops/web/t05st02"}
-        response = requests.post(url, json=params, headers=headers)
-        data = response.json()
+        # 使用 requests.post 發送請求
+        response = requests.post(url, json=params, headers=headers, timeout=10)
         
-        # 顯示回傳的內容 (需根據 API 回傳的具體欄位調整)
-        st.write("---")
-        st.json(data) # 這裡會顯示完整的 API 回傳結構
+        if response.status_code == 200:
+            data = response.json()
+            
+            # 假設 API 回傳格式為 {'result': {'data': ...}} 或直接包含內容
+            st.write(f"### {row['公司名稱']} - {row['主旨']}")
+            st.json(data) # 這裡將詳細內容顯示出來
+        else:
+            st.error(f"無法存取詳細資料 (錯誤碼: {response.status_code})")
+            st.write("建議：由於證交所 API 保護機制，若無法直接載入，請改用連結查看。")
+            
     except Exception as e:
-        st.error("無法載入詳細內容")
+        st.error(f"連線錯誤: {e}")
     
 with tab6:
     st.subheader("📰 上市每日重大訊息")
