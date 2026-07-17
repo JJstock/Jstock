@@ -510,11 +510,32 @@ def fetch_twse_news():
     month = str(now.month)
     day = str(now.day)
     
+    # 這是正確的後端 API 端點
     url = "https://mops.twse.com.tw/mops/api/t05st02"
-    payload = {"year": year, "month": month, "day": day}
+    
+    # 這是 MOPS API 要求的參數格式 (注意這裡不是 json=，而是 data=)
+    payload = {
+        "year": year,
+        "month": month,
+        "day": day
+    }
+    
+    # 【關鍵】模擬瀏覽器 Header，否則會被網站擋下
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "Referer": "https://mops.twse.com.tw/mops/web/t05st02",
+        "Content-Type": "application/json" # 告訴伺服器我們發送的是 JSON
+    }
     
     try:
-        response = requests.post(url, json=payload, timeout=10)
+        # 使用 data 參數並將 payload 轉為 json 字串
+        response = requests.post(url, json=payload, headers=headers, timeout=10)
+        
+        # 除錯用：印出狀態碼
+        if response.status_code != 200:
+            st.error(f"伺服器回應異常: {response.status_code}")
+            return pd.DataFrame()
+            
         data = response.json()
         
         if data.get('code') == 200 and 'result' in data:
@@ -523,8 +544,7 @@ def fetch_twse_news():
             
             df = pd.DataFrame(data_list, columns=['出表日期', '時間', '公司代號', '公司名稱', '主旨', '詳細資訊'])
             
-            # --- 統一在這裡處理日期轉換 ---
-            # 假設 API 回傳格式為 '115/07/17'
+            # 處理日期 (轉換 115/07/17 格式)
             def parse_date(date_str):
                 try:
                     y, m, d = map(int, date_str.split('/'))
@@ -532,13 +552,15 @@ def fetch_twse_news():
                 except: return None
             
             df['出表日期'] = df['出表日期'].apply(parse_date)
-            df = df.dropna(subset=['出表日期'])
-            
-            return df.drop(columns=['詳細資訊'])
+            return df.dropna(subset=['出表日期']).drop(columns=['詳細資訊'])
+        
         return pd.DataFrame()
+        
     except Exception as e:
-        st.error(f"抓取失敗: {e}")
+        st.error(f"連線細節錯誤: {e}")
         return pd.DataFrame()
+        response = requests.post(url, json=payload, headers=headers, timeout=10)
+st.write(response.text) # 在 Streamlit 上印出回傳內容
 
 
     
