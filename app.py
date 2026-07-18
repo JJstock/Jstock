@@ -66,7 +66,7 @@ def get_stock_data(ticker):
     }, df
 
 # --- 主程式流程 ---
-tab1, tab2, tab3, tab4 ,tab5,tab6 = st.tabs(["📊 主監控頁面", "🏦 金農專區","📊題材專區", "📈 月營收監控","📈EPS查詢","📊重訊查詢"])
+tab1, tab2, tab3, tab4 ,tab5 = st.tabs(["📊 主監控頁面", "🏦 金農專區","📊題材專區", "📈 月營收監控","📊重訊查詢"])
 
 if 'my_stocks' not in st.session_state:
     st.session_state.my_stocks = {
@@ -444,66 +444,6 @@ with tab4:
     else:
         st.info("👆 請先點擊上方按鈕載入資料")
 
-
-with tab5:
-    st.subheader("📊 公司每股盈餘 (EPS) 查詢")
-    
-    # 1. 抓取 EPS 資料 (建議同樣加上 cache)
-    @st.cache_data(ttl=3600)
-    def fetch_eps_data():
-        url = "https://openapi.twse.com.tw/v1/opendata/t187ap14_L"
-        try:
-            response = requests.get(url)
-            df = pd.DataFrame(response.json())
-            # 統一移除欄位空格
-            df.columns = df.columns.str.strip()
-            return df
-        except:
-            return pd.DataFrame()
-
-    # 2. 初始化或同步資料
-    if st.button("🔄 查詢財報資料"):
-        st.session_state.eps_data = fetch_eps_data()
-        st.success("財報資料庫已更新！")
-    
-    if 'eps_data' not in st.session_state:
-        st.session_state.eps_data = fetch_eps_data()
-
-    # 3. 輸入代號與篩選
-    df_eps = st.session_state.eps_data
-    if not df_eps.empty:
-        stock_code = st.text_input("請輸入公司代號 (例如: 2330)", key="eps_input")
-        
-        if stock_code:
-            # 篩選該公司資料並按年度/季別排序
-            company_data = df_eps[df_eps['公司代號'] == stock_code].sort_values(
-                by=['年度', '季別'], ascending=[False, False]
-            )
-            
-            if not company_data.empty:
-                company_name = company_data.iloc[0]['公司名稱']
-                st.write(f"### {stock_code} {company_name} 歷史 EPS")
-                
-                # 顯示表格 (只顯示關鍵欄位)
-                st.dataframe(
-                    company_data[['年度', '季別', '基本每股盈餘(元)', '營業收入', '稅後淨利']],
-                    use_container_width=True,
-                    hide_index=True
-                )
-                
-                # 下載按鈕
-                csv = company_data.to_csv(index=False, encoding='utf-8-sig').encode('utf-8-sig')
-                st.download_button(
-                    label=f"📥 下載 {stock_code} 財報數據",
-                    data=csv,
-                    file_name=f"EPS_{stock_code}.csv",
-                    mime="text/csv"
-                )
-            else:
-                st.warning("查無此代號資料，請確認輸入是否正確。")
-    else:
-        st.info("尚無資料，請點擊上方按鈕載入。")
-
 def fetch_twse_news():
     now = datetime.datetime.now()
     year = str(now.year - 1911)
@@ -598,7 +538,7 @@ def show_detail(row):
     except Exception as e:
         st.error(f"解析資料時發生錯誤: {e}")
     
-with tab6:
+with tab5:
     st.subheader("📰 上市每日重大訊息")
     
     # 1. 同步按鈕
