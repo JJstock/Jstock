@@ -614,7 +614,7 @@ with tab6:
         ticker = ticker.strip()
         
         # 1. 提供跳轉按鈕
-        st.link_button(f"前往 {ticker} 官網詳情", f"https://www.pocket.tw/etf/tw/{ticker}/")
+        st.link_button(f"前往 {ticker} 口袋證券", f"https://www.pocket.tw/etf/tw/{ticker}/")
         
         # 2. 自動抓取並顯示前十大成分股
         with st.spinner('正在讀取成分股資料...'):
