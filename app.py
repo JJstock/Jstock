@@ -614,29 +614,34 @@ with tab6:
     if 'news_data' in st.session_state:
         df_news = st.session_state.news_data
         
-        # 2. 篩選介面
+       # 2. 篩選介面
         st.subheader("🔍 重訊篩選條件")
-        col1, col2 = st.columns(2)
+        col1, col2, col3 = st.columns(3) # 改為 3 欄
+        
         with col1:
-            search_query = st.text_input("輸入關鍵字", value="自結|財報|財務|上半年|第二季")
+            search_query = st.text_input("包含關鍵字", value="自結|財報|財務|上半年|第二季")
         with col2:
+            exclude_query = st.text_input("排除關鍵字", value="召開")
+        with col3:
             date_range = st.date_input("日期區間", value=(df_news['出表日期'].min(), df_news['出表日期'].max()))
 
-       # 3. 篩選邏輯
-        # A. 文字篩選 (包含關鍵字)
+        # 3. 篩選邏輯
+        # 包含關鍵字
         mask_text = df_news['主旨'].str.contains(search_query, case=False, na=False, regex=True)
         
-        # B. 【新增】排除包含 "召開" 的行
-        mask_exclude = ~df_news['主旨'].str.contains("召開", case=False, na=False)
+        # 排除關鍵字 (若輸入框為空則不排除)
+        if exclude_query.strip():
+            mask_exclude = ~df_news['主旨'].str.contains(exclude_query, case=False, na=False, regex=True)
+        else:
+            mask_exclude = True
         
-        # C. 日期篩選
+        # 日期篩選
         if isinstance(date_range, tuple) and len(date_range) == 2:
-            start_date, end_date = date_range
-            mask_date = (df_news['出表日期'] >= start_date) & (df_news['出表日期'] <= end_date)
+            mask_date = (df_news['出表日期'] >= date_range[0]) & (df_news['出表日期'] <= date_range[1])
         else:
             mask_date = True
         
-        # D. 合併所有條件
+        # 合併所有條件
         filtered_news = df_news[mask_text & mask_exclude & mask_date]
 
         # 4. 顯示與點擊事件
