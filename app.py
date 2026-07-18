@@ -604,19 +604,18 @@ with tab5:
         csv = filtered_news.to_csv(index=False, encoding='utf-8-sig').encode('utf-8-sig')
         st.download_button("📥 下載篩選結果 CSV", data=csv, file_name="filtered_news.csv", mime="text/csv")
 
-import streamlit as st
-import streamlit.components.v1 as components
-
-# 在您的 tab6 中
 with tab6:
-    st.subheader("📊 ETF 成分股即時查看")
-    ticker = st.text_input("輸入 ETF 代號 (例如 0050):", placeholder="請輸入代號")
+    st.subheader("🚀 查詢 ETF 成分股")
+    
+    # 建立輸入框
+    ticker = st.text_input("輸入股票代號 (例如 0050, 0056):", placeholder="請輸入代號")
     
     if ticker:
+        # 移除可能輸入的空白
         ticker = ticker.strip()
-        # 這是口袋證券的成分股專屬連結格式
-        target_url = f"https://www.pocket.tw/etf/tw/{ticker}/fundholding/"
         
-        # 內嵌該頁面，讓使用者直接在您的系統裡操作
-        # height 設定為 600px 左右，讓成分股表格能完整顯示
-        components.iframe(target_url, height=600, scrolling=True)
+        # 組合網址
+        target_url = f"https://www.pocket.tw/etf/tw/{ticker}/"
+        
+        # 使用 link_button 按鈕跳轉
+        st.link_button(f"前往 {ticker} 詳細頁面", target_url)
