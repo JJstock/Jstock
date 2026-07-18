@@ -6,3 +6,4 @@ numpy
 fugle-marketdata
 twstock
 datetime
+selenium webdriver-manager pandas
