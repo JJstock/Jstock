@@ -620,11 +620,17 @@ with tab6:
         with st.spinner('正在讀取成分股資料...'):
             try:
                 # 模擬瀏覽器標頭
-                headers = {"User-Agent": "Mozilla/5.0"}
+                headers = {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36",
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+    "Accept-Language": "zh-TW,zh;q=0.9,en-US;q=0.8,en;q=0.7",
+    "Referer": "https://www.google.com/"
+}
                 url = f"https://www.pocket.tw/etf/tw/{ticker}/"
                 
                 # pd.read_html 會直接抓取頁面中所有的 <table>
-                tables = pd.read_html(url, header=0) # header=0 假設第一行為標題
+                response = requests.get(url, headers=headers, timeout=10)
+                tables = pd.read_html(response.text, header=0)
                 
                 if tables:
                     # 通常成分股表格會在第一個或特定的 table
