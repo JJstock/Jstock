@@ -608,14 +608,38 @@ with tab6:
     st.subheader("🚀 查詢 ETF 成分股")
     
     # 建立輸入框
-    ticker = st.text_input("輸入股票代號 (例如 0050, 2330):", placeholder="請輸入代號")
+    ticker = st.text_input("輸入 ETF 代號 (例如 0050, 0056):", placeholder="請輸入代號")
     
     if ticker:
-        # 移除可能輸入的空白
         ticker = ticker.strip()
         
-        # 組合網址
-        target_url = f"https://www.pocket.tw/etf/tw/{ticker}/"
+        # 1. 提供跳轉按鈕
+        st.link_button(f"前往 {ticker} 官網詳情", f"https://www.pocket.tw/etf/tw/{ticker}/")
         
-        # 使用 link_button 按鈕跳轉
-        st.link_button(f"前往 {ticker} 詳細頁面", target_url)
+        # 2. 自動抓取並顯示前十大成分股
+        with st.spinner('正在讀取成分股資料...'):
+            try:
+                # 模擬瀏覽器標頭
+                headers = {"User-Agent": "Mozilla/5.0"}
+                url = f"https://www.pocket.tw/etf/tw/{ticker}/"
+                
+                # pd.read_html 會直接抓取頁面中所有的 <table>
+                tables = pd.read_html(url, header=0) # header=0 假設第一行為標題
+                
+                if tables:
+                    # 通常成分股表格會在第一個或特定的 table
+                    df_holdings = tables[0] 
+                    
+                    # 假設表格中有 '權重' 欄位，進行排序
+                    if '權重' in df_holdings.columns:
+                        # 處理權重字串：移除 % 並轉數值
+                        df_holdings['權重_val'] = df_holdings['權重'].replace('%', '', regex=True).astype(float)
+                        df_holdings = df_holdings.sort_values(by='權重_val', ascending=False)
+                        
+                    st.success(f"📈 {ticker} 前十大成分股")
+                    st.dataframe(df_holdings.head(10).drop(columns=['權重_val'], errors='ignore'), 
+                                 use_container_width=True, hide_index=True)
+                else:
+                    st.warning("無法抓取到表格資料，請檢查代號是否正確。")
+            except Exception as e:
+                st.error("目前無法自動抓取成分股，請使用上方按鈕前往官網查看。")
