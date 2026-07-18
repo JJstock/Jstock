@@ -623,13 +623,21 @@ with tab6:
             date_range = st.date_input("日期區間", value=(df_news['出表日期'].min(), df_news['出表日期'].max()))
 
        # 3. 篩選邏輯
-       # 包含關鍵字 (維持原本的邏輯)
-       mask_text = df_news['主旨'].str.contains(search_query, case=False, na=False, regex=True)
-        # 【新增】排除包含 "召開" 的行
-       mask_exclude = ~df_news['主旨'].str.contains("召開", case=False, na=False)
-
-       # 將兩個條件合併 (必須同時滿足：包含搜尋詞 且 不包含 "召開")
-       filtered_news = df_news[mask_text & mask_exclude & mask_date]
+        # A. 文字篩選 (包含關鍵字)
+        mask_text = df_news['主旨'].str.contains(search_query, case=False, na=False, regex=True)
+        
+        # B. 【新增】排除包含 "召開" 的行
+        mask_exclude = ~df_news['主旨'].str.contains("召開", case=False, na=False)
+        
+        # C. 日期篩選
+        if isinstance(date_range, tuple) and len(date_range) == 2:
+            start_date, end_date = date_range
+            mask_date = (df_news['出表日期'] >= start_date) & (df_news['出表日期'] <= end_date)
+        else:
+            mask_date = True
+        
+        # D. 合併所有條件
+        filtered_news = df_news[mask_text & mask_exclude & mask_date]
 
         # 4. 顯示與點擊事件
         st.caption(f"共搜尋到 {len(filtered_news)} 筆相關重訊")
