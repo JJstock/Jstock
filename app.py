@@ -607,45 +607,17 @@ with tab5:
 with tab6:
     st.subheader("🚀 查詢 ETF 成分股")
     
-    # 建立輸入框
-    ticker = st.text_input("輸入 ETF 代號 (例如 0050, 0056):", placeholder="請輸入代號")
+   # 建立輸入框
+    ticker = st.text_input("輸入 ETF 代號 (例如 0050):", placeholder="請輸入代號")
     
     if ticker:
         ticker = ticker.strip()
+        target_url = f"https://www.pocket.tw/etf/tw/{ticker}/"
         
-        # 1. 提供跳轉按鈕
-        st.link_button(f"前往 {ticker} 口袋證券", f"https://www.pocket.tw/etf/tw/{ticker}/")
-        
-        # 2. 自動抓取並顯示前十大成分股
-        with st.spinner('正在讀取成分股資料...'):
-            try:
-                # 模擬瀏覽器標頭
-                headers = {
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36",
-    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
-    "Accept-Language": "zh-TW,zh;q=0.9,en-US;q=0.8,en;q=0.7",
-    "Referer": "https://www.google.com/"
-}
-                url = f"https://www.pocket.tw/etf/tw/{ticker}/"
-                
-                # pd.read_html 會直接抓取頁面中所有的 <table>
-                response = requests.get(url, headers=headers, timeout=10)
-                tables = pd.read_html(response.text, header=0)
-                
-                if tables:
-                    # 通常成分股表格會在第一個或特定的 table
-                    df_holdings = tables[0] 
-                    
-                    # 假設表格中有 '權重' 欄位，進行排序
-                    if '權重' in df_holdings.columns:
-                        # 處理權重字串：移除 % 並轉數值
-                        df_holdings['權重_val'] = df_holdings['權重'].replace('%', '', regex=True).astype(float)
-                        df_holdings = df_holdings.sort_values(by='權重_val', ascending=False)
-                        
-                    st.success(f"📈 {ticker} 前十大成分股")
-                    st.dataframe(df_holdings.head(10).drop(columns=['權重_val'], errors='ignore'), 
-                                 use_container_width=True, hide_index=True)
-                else:
-                    st.warning("無法抓取到表格資料，請檢查代號是否正確。")
-            except Exception as e:
-                st.error("目前無法自動抓取成分股，請使用上方按鈕前往官網查看。")
+        # 顯示該網頁的內容視窗
+        # height 設為 600，讓使用者可以在裡面捲動該網頁
+        try:
+            components.iframe(target_url, height=600, scrolling=True)
+            st.caption(f"資料來源：Pocket 投資網 - {ticker}")
+        except Exception as e:
+            st.error("無法載入頁面，請檢查網路連線或代號。")
