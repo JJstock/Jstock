@@ -66,7 +66,7 @@ def get_stock_data(ticker):
     }, df
 
 # --- 主程式流程 ---
-tab1, tab2, tab3, tab4 ,tab5 = st.tabs(["📊 主監控頁面", "🏦 金農專區","📊題材專區", "📈 月營收監控","📊重訊查詢"])
+tab1, tab2, tab3, tab4 ,tab5 ,tab6= st.tabs(["📊 主監控頁面", "🏦 金農專區","📊題材專區", "📈 月營收監控","📊重訊查詢","🚀 查詢 ETF 成分股"])
 
 if 'my_stocks' not in st.session_state:
     st.session_state.my_stocks = {
@@ -603,3 +603,19 @@ with tab5:
         # 5. 下載
         csv = filtered_news.to_csv(index=False, encoding='utf-8-sig').encode('utf-8-sig')
         st.download_button("📥 下載篩選結果 CSV", data=csv, file_name="filtered_news.csv", mime="text/csv")
+
+with tab6:
+    st.subheader("🚀 查詢 ETF 成分股")
+    
+    # 建立輸入框
+    ticker = st.text_input("輸入股票代號 (例如 0050, 2330):", placeholder="請輸入代號")
+    
+    if ticker:
+        # 移除可能輸入的空白
+        ticker = ticker.strip()
+        
+        # 組合網址
+        target_url = f"https://www.pocket.tw/etf/tw/{ticker}/"
+        
+        # 使用 link_button 按鈕跳轉
+        st.link_button(f"前往 {ticker} 詳細頁面", target_url)
