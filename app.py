@@ -605,46 +605,17 @@ with tab5:
         st.download_button("📥 下載篩選結果 CSV", data=csv, file_name="filtered_news.csv", mime="text/csv")
 
 with tab6:
-    st.subheader("🚀 ETF 成分股分析查詢")
+    st.subheader("🚀 查詢 ETF 成分股")
     
-    # 1. 輸入與操作區
-    col_a, col_b = st.columns([2, 1])
-    with col_a:
-        ticker = st.text_input("輸入 ETF 代號 (例如 0050):", placeholder="請輸入 4 位數代號")
-    with col_b:
-        st.write("###") # 對齊用
-        fetch_btn = st.button("查詢成分股資料")
-
-    if ticker and fetch_btn:
+    # 建立輸入框
+    ticker = st.text_input("輸入股票代號 (例如 0050, 0056):", placeholder="請輸入代號")
+    
+    if ticker:
+        # 移除可能輸入的空白
         ticker = ticker.strip()
         
-        # 2. 顯示前往官網連結
-        st.link_button(f"前往 {ticker} Pocket 官網", f"https://www.pocket.tw/etf/tw/{ticker}/fundholding/")
+        # 組合網址
+        target_url = f"https://www.pocket.tw/etf/tw/{ticker}/"
         
-        # 3. 執行爬蟲與資料處理
-        with st.spinner(f"正在從 Pocket 讀取 {ticker} 成分股..."):
-            try:
-                # 呼叫我們定義的 Selenium 爬蟲函數
-                df = get_etf_holdings_selenium(ticker)
-                
-                if df is not None and not df.empty:
-                    # 資料清洗：權重排序
-                    # 假設表格欄位名稱包含 '權重'，請根據實際抓到的 DataFrame 欄位調整
-                    target_col = [c for c in df.columns if '權重' in c]
-                    if target_col:
-                        col_name = target_col[0]
-                        # 處理 % 符號並轉成數值進行排序
-                        df['權重數值'] = df[col_name].replace({'%': ''}, regex=True).astype(float)
-                        df = df.sort_values(by='權重數值', ascending=False).drop(columns=['權重數值'])
-                    
-                    st.success(f"📈 {ticker} 成分股（已依權重降冪排序）")
-                    st.dataframe(df, use_container_width=True, hide_index=True)
-                else:
-                    st.warning("未抓取到表格資料，請確認代號正確或該 ETF 無成分股資料。")
-                    
-            except Exception as e:
-                st.error(f"自動抓取失敗。建議檢查網路或改用上方按鈕前往官網查看。錯誤訊息: {e}")
-
-    # 4. 如果沒有查詢，可以顯示一些說明
-    elif not ticker:
-        st.info("請輸入代號以查詢成分股組成。")
+        # 使用 link_button 按鈕跳轉
+        st.link_button(f"前往 {ticker} 詳細頁面", target_url)
