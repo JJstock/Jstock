@@ -619,3 +619,21 @@ with tab6:
         
         # 使用 link_button 按鈕跳轉
         st.link_button(f"前往 {ticker} 詳細頁面", target_url)
+    
+    def get_taifex_holdings(url):
+    try:
+        # pd.read_html 會回傳頁面上所有的表格，通常成分股是第一個
+        dfs = pd.read_html(url)
+        if dfs:
+            df = dfs[0]
+            # 假設表格前兩欄為「排行」、「證券名稱」，第三欄為「比重」
+            return df.head(10) # 顯示前十大
+    except Exception as e:
+        return None
+
+# 在 tab6 中顯示
+url = "https://www.taifex.com.tw/cht/2/tPEXPropertion" # 以櫃買為例
+df = get_taifex_holdings(url)
+if df is not None:
+    st.write("### 前十大成分股排行")
+    st.table(df)
