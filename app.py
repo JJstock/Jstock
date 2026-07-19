@@ -623,7 +623,7 @@ def get_taifex_holdings(url):
             
             # 設定標準欄位名稱
             df.columns = ['排行', '代號', '名稱', '佔比']
-            return df.head(10)
+            return df.head(50)
     except Exception as e:
         return None
 
@@ -641,7 +641,7 @@ with tab6:
 
     # --- B區：更新後的邏輯 ---
 with tab6:
-    st.subheader("📊 指定指數成分股 (期交所來源)")
+    st.subheader("📊 指定指數成分股 (期交所)")
     
     data_source = st.selectbox("選擇查詢指數:", options=["上市指數", "櫃買指數"])
     
@@ -651,11 +651,11 @@ with tab6:
         "櫃買指數": "https://www.taifex.com.tw/cht/2/tPEXPropertion"
     }
     
-    if st.button("開始抓取期交所資料"):
-        with st.spinner("正在讀取期交所資料..."):
+    if st.button("開始讀取資料"):
+        with st.spinner("正在讀取資料..."):
             df = get_taifex_holdings(urls[data_source])
             if df is not None:
-                st.write(f"### {data_source} 前十大成分股")
+                st.write(f"### {data_source} 前50大成分股")
                 st.dataframe(df, use_container_width=True, hide_index=True)
             else:
                 st.error("無法抓取資料，請確認該頁面表格結構是否變更。")
