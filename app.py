@@ -662,10 +662,7 @@ with tab6:
                     use_container_width=True, 
                     hide_index=True,
                     column_config={
-                        "排行": st.column_config.NumberColumn(
-                            "排行",
-                            width="50",  # 將這一欄設定為小寬度
-                        ),
+                        "排行": st.column_config.NumberColumn("排行",width="50"),  # 將這一欄設定為小寬度
                         "代號": st.column_config.TextColumn("代號"),
                         "名稱": st.column_config.TextColumn("名稱"),
                         "佔比": st.column_config.TextColumn("佔比"),
