@@ -541,7 +541,7 @@ def show_detail(row):
         st.error(f"解析資料時發生錯誤: {e}")
     
 with tab5:
-    st.subheader("📰 上市每日重大訊息")
+    st.subheader("📰 MOPS每日重大訊息")
     
     # 1. 同步按鈕
     if st.button("🔄 同步最新重大訊息"):
