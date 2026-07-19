@@ -656,6 +656,20 @@ with tab6:
             df = get_taifex_holdings(urls[data_source])
             if df is not None:
                 st.write(f"### {data_source} 前50大成分股")
-                st.dataframe(df, use_container_width=True, hide_index=True)
+                # 使用 column_config 來設定欄位樣式與寬度
+                st.dataframe(
+                    df, 
+                    use_container_width=True, 
+                    hide_index=True,
+                    column_config={
+                        "排行": st.column_config.NumberColumn(
+                            "排行",
+                            width="small",  # 將這一欄設定為小寬度
+                        ),
+                        "代號": st.column_config.TextColumn("代號"),
+                        "名稱": st.column_config.TextColumn("名稱"),
+                        "佔比": st.column_config.TextColumn("佔比"),
+                    }
+                )
             else:
                 st.error("無法抓取資料，請確認該頁面表格結構是否變更。")
