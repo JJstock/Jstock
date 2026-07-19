@@ -632,13 +632,13 @@ with tab6:
     
     # 這裡放一個下拉選單讓使用者選，避免直接寫死 URL
     data_source = st.selectbox("選擇查詢指數:", 
-                               options=["櫃買指數", "生技醫療指數"],
+                               options=["上市指數", "櫃買指數"],
                                format_func=lambda x: x)
     
     # 對應 URL
     urls = {
-        "櫃買指數": "https://www.taifex.com.tw/cht/2/tPEXPropertion",
-        "生技醫療指數": "https://www.taifex.com.tw/cht/2/bTFPropertion"
+        "上市指數": "https://www.taifex.com.tw/cht/9/futuresQADetail",
+        "櫃買指數": "https://www.taifex.com.tw/cht/2/tPEXPropertion"        
     }
     
     if st.button("開始抓取期交所資料"):
