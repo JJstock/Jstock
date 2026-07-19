@@ -604,36 +604,48 @@ with tab5:
         csv = filtered_news.to_csv(index=False, encoding='utf-8-sig').encode('utf-8-sig')
         st.download_button("📥 下載篩選結果 CSV", data=csv, file_name="filtered_news.csv", mime="text/csv")
 
-with tab6:
-    st.subheader("🚀 查詢 ETF 成分股")
-    
-    # 建立輸入框
-    ticker = st.text_input("輸入股票代號 (例如 0050, 0056):", placeholder="請輸入代號")
-    
-    if ticker:
-        # 移除可能輸入的空白
-        ticker = ticker.strip()
-        
-        # 組合網址
-        target_url = f"https://www.pocket.tw/etf/tw/{ticker}/"
-        
-        # 使用 link_button 按鈕跳轉
-        st.link_button(f"前往 {ticker} 詳細頁面", target_url)
-    
- def get_taifex_holdings(url):
+# 1. 將函式定義在最上方（不要放在 tab 裡面）
+def get_taifex_holdings(url):
     try:
-        # pd.read_html 會回傳頁面上所有的表格，通常成分股是第一個
-        dfs = pd.read_html(url)
+        # 建議加上 headers，避免被期交所伺服器擋住
+        headers = {'User-Agent': 'Mozilla/5.0'}
+        dfs = pd.read_html(url, header=0) # header=0 確保抓到正確標題列
         if dfs:
-            df = dfs[0]
-            # 假設表格前兩欄為「排行」、「證券名稱」，第三欄為「比重」
-            return df.head(10) # 顯示前十大
+            return dfs[0].head(10) # 顯示前十大
     except Exception as e:
         return None
 
-# 在 tab6 中顯示
-url = "https://www.taifex.com.tw/cht/2/tPEXPropertion" # 以櫃買為例
-df = get_taifex_holdings(url)
-if df is not None:
-    st.write("### 前十大成分股排行")
-    st.table(df)
+with tab6:
+    st.subheader("🚀 ETF 成分股查詢區")
+    
+    # --- A區：Pocket ETF 查詢 ---
+    ticker = st.text_input("輸入 Pocket ETF 代號 (例如 0050):", placeholder="請輸入代號")
+    if ticker:
+        ticker = ticker.strip()
+        target_url = f"https://www.pocket.tw/etf/tw/{ticker}/"
+        st.link_button(f"前往 {ticker} 詳細頁面", target_url)
+
+    st.divider()
+
+    # --- B區：期交所成分股查詢 ---
+    st.subheader("📊 指定指數成分股 (期交所來源)")
+    
+    # 這裡放一個下拉選單讓使用者選，避免直接寫死 URL
+    data_source = st.selectbox("選擇查詢指數:", 
+                               options=["櫃買指數", "生技醫療指數"],
+                               format_func=lambda x: x)
+    
+    # 對應 URL
+    urls = {
+        "櫃買指數": "https://www.taifex.com.tw/cht/2/tPEXPropertion",
+        "生技醫療指數": "https://www.taifex.com.tw/cht/2/bTFPropertion"
+    }
+    
+    if st.button("開始抓取期交所資料"):
+        with st.spinner("正在讀取期交所資料..."):
+            df = get_taifex_holdings(urls[data_source])
+            if df is not None:
+                st.write(f"### {data_source} 前十大成分股")
+                st.table(df)
+            else:
+                st.error("無法抓取資料，請檢查網路連線或該頁面結構。")
