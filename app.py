@@ -8,6 +8,8 @@ import gc
 import time
 import datetime
 from fugle_marketdata import RestClient
+from io import StringIO
+
 st.set_page_config(page_title="Jstok股價監控", layout="wide")
 st.title("JStok 📊 MA20+60 與財報監控")
 
@@ -607,11 +609,21 @@ with tab5:
 # 1. 將函式定義在最上方（不要放在 tab 裡面）
 def get_taifex_holdings(url):
     try:
-        # 建議加上 headers，避免被期交所伺服器擋住
         headers = {'User-Agent': 'Mozilla/5.0'}
-        dfs = pd.read_html(url, header=0) # header=0 確保抓到正確標題列
+        response = requests.get(url, headers=headers, timeout=10)
+        response.encoding = 'utf-8' # 解決亂碼關鍵
+        
+        dfs = pd.read_html(StringIO(response.text), header=0)
         if dfs:
-            return dfs[0].head(10) # 顯示前十大
+            df = dfs[0]
+            # 針對上市指數，表格結構通常較寬，只取前4欄
+            # 若表格欄位少於4個，則不做切片
+            if df.shape[1] >= 4:
+                df = df.iloc[:, :4]
+            
+            # 設定標準欄位名稱
+            df.columns = ['排行', '代號', '名稱', '佔比']
+            return df.head(10)
     except Exception as e:
         return None
 
@@ -627,18 +639,16 @@ with tab6:
 
     st.divider()
 
-    # --- B區：期交所成分股查詢 ---
+    # --- B區：更新後的邏輯 ---
+with tab6:
     st.subheader("📊 指定指數成分股 (期交所來源)")
     
-    # 這裡放一個下拉選單讓使用者選，避免直接寫死 URL
-    data_source = st.selectbox("選擇查詢指數:", 
-                               options=["上市指數", "櫃買指數"],
-                               format_func=lambda x: x)
+    data_source = st.selectbox("選擇查詢指數:", options=["上市指數", "櫃買指數"])
     
-    # 對應 URL
+    # 【關鍵修正】請使用正確的成分股頁面連結
     urls = {
-        "上市指數": "https://www.taifex.com.tw/cht/9/futuresQADetail",
-        "櫃買指數": "https://www.taifex.com.tw/cht/2/tPEXPropertion"        
+        "上市指數": "https://www.taifex.com.tw/cht/2/weightedPropertion", 
+        "櫃買指數": "https://www.taifex.com.tw/cht/2/tPEXPropertion"
     }
     
     if st.button("開始抓取期交所資料"):
@@ -646,6 +656,6 @@ with tab6:
             df = get_taifex_holdings(urls[data_source])
             if df is not None:
                 st.write(f"### {data_source} 前十大成分股")
-                st.table(df)
+                st.dataframe(df, use_container_width=True, hide_index=True)
             else:
-                st.error("無法抓取資料，請檢查網路連線或該頁面結構。")
+                st.error("無法抓取資料，請確認該頁面表格結構是否變更。")
