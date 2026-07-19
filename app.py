@@ -620,7 +620,7 @@ with tab6:
         # 使用 link_button 按鈕跳轉
         st.link_button(f"前往 {ticker} 詳細頁面", target_url)
     
-    def get_taifex_holdings(url):
+ def get_taifex_holdings(url):
     try:
         # pd.read_html 會回傳頁面上所有的表格，通常成分股是第一個
         dfs = pd.read_html(url)
