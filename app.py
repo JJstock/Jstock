@@ -454,48 +454,71 @@ def fetch_twse_news():
     
     url = "https://mops.twse.com.tw/mops/api/t05st02"
     payload = {"year": year, "month": month, "day": day}
+    
+    # 補齊更完整的瀏覽器 Headers 模擬真人操作
     headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36",
         "Referer": "https://mops.twse.com.tw/mops/web/t05st02",
-        "Content-Type": "application/json"
+        "Origin": "https://mops.twse.com.tw",
+        "Content-Type": "application/json",
+        "Accept": "application/json, text/javascript, */*; q=0.01"
     }
     
     try:
         response = requests.post(url, json=payload, headers=headers, timeout=10)
+        
+        # 1. 檢查 HTTP 狀態碼
         if response.status_code != 200:
+            st.warning(f"MOPS 伺服器回應異常，狀態碼: {response.status_code}")
             return pd.DataFrame()
             
-        data = response.json()
-        if data.get('code') == 200 and 'result' in data:
-            data_list = data['result']['data']
-            if not data_list: return pd.DataFrame()
+        # 2. 檢查回應內容是否為空
+        if not response.text.strip():
+            st.warning("MOPS 伺服器回傳空白內容。")
+            return pd.DataFrame()
             
-            # 1. 建立 DataFrame
+        # 3. 嘗試解析 JSON，若伺服器回傳 HTML 錯誤頁面這裡會被抓到
+        try:
+            data = response.json()
+        except json.JSONDecodeError:
+            st.error("連線細節錯誤: 伺服器未回傳合法的 JSON 格式（可能遭到防火牆阻擋）。")
+            return pd.DataFrame()
+            
+        # 4. 解析資料結構
+        if data.get('code') == 200 and 'result' in data:
+            data_list = data['result'].get('data', [])
+            if not data_list: 
+                return pd.DataFrame()
+            
             df = pd.DataFrame(data_list, columns=['出表日期', '時間', '公司代號', '公司名稱', '主旨', '詳細資訊'])
             
-            # 2. 處理日期：轉換為日期物件 (一定要在 return 之前做)
+            # 處理日期
             def parse_date(date_str):
                 try:
                     y, m, d = map(int, str(date_str).split('/'))
                     return datetime.date(y + 1911, m, d)
-                except: return None
+                except: 
+                    return None
             
             df['出表日期'] = df['出表日期'].apply(parse_date)
             df = df.dropna(subset=['出表日期'])
             
-            # 3. 檢查「詳細資訊」是否為字典型態 (API 回傳有時是字串，需轉為字典)
-            # 如果它已經是字典就不需要轉，如果是字串才轉
-            import json
+            if df.empty:
+                return pd.DataFrame()
+                
+            # 處理詳細資訊欄位
             if isinstance(df['詳細資訊'].iloc[0], str):
                 df['詳細資訊'] = df['詳細資訊'].apply(json.loads)
-            
-            # 【關鍵】這裡才 return，確保資料已經清洗過且包含完整欄位
-            return df 
+                
+            return df
             
         return pd.DataFrame()
         
+    except requests.exceptions.RequestException as e:
+        st.error(f"網路連線失敗: {e}")
+        return pd.DataFrame()
     except Exception as e:
-        st.error(f"連線細節錯誤: {e}")
+        st.error(f"資料解析發生未預期錯誤: {e}")
         return pd.DataFrame()
 
 @st.dialog("重訊詳情", width="large")
