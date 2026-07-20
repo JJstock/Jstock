@@ -447,7 +447,7 @@ with tab4:
         st.info("👆 請先點擊上方按鈕載入資料")
 
 def fetch_twse_news():
-   now = datetime.datetime.now()
+    now = datetime.datetime.now()
     year = str(now.year - 1911)
     month = str(now.month)
     day = str(now.day)
