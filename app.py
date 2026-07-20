@@ -9,7 +9,7 @@ import time
 import datetime
 from fugle_marketdata import RestClient
 from io import StringIO
-
+import json
 st.set_page_config(page_title="Jstok股價監控", layout="wide")
 st.title("JStok 📊 MA20+60 與財報監控")
 
