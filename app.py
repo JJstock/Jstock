@@ -447,164 +447,155 @@ with tab4:
         st.info("👆 請先點擊上方按鈕載入資料")
 
 def fetch_twse_news():
-    now = datetime.datetime.now()
-    year = str(now.year - 1911)
-    month = str(now.month)
-    day = str(now.day)
-    
-    url = "https://mops.twse.com.tw/mops/api/t05st02"
-    payload = {"year": year, "month": month, "day": day}
-    headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-        "Referer": "https://mops.twse.com.tw/mops/web/t05st02",
-        "Content-Type": "application/json"
-    }
-    
-    try:
-        response = requests.post(url, json=payload, headers=headers, timeout=10)
-        if response.status_code != 200:
-            return pd.DataFrame()
-            
-        data = response.json()
-        if data.get('code') == 200 and 'result' in data:
-            data_list = data['result']['data']
-            if not data_list: return pd.DataFrame()
-            
-            # 1. 建立 DataFrame
-            df = pd.DataFrame(data_list, columns=['出表日期', '時間', '公司代號', '公司名稱', '主旨', '詳細資訊'])
-            
-            # 2. 處理日期：轉換為日期物件 (一定要在 return 之前做)
-            def parse_date(date_str):
-                try:
-                    y, m, d = map(int, str(date_str).split('/'))
-                    return datetime.date(y + 1911, m, d)
-                except: return None
-            
-            df['出表日期'] = df['出表日期'].apply(parse_date)
-            df = df.dropna(subset=['出表日期'])
-            
-            # 3. 檢查「詳細資訊」是否為字典型態 (API 回傳有時是字串，需轉為字典)
-            # 如果它已經是字典就不需要轉，如果是字串才轉
-            import json
-            if isinstance(df['詳細資訊'].iloc[0], str):
-                df['詳細資訊'] = df['詳細資訊'].apply(json.loads)
-            
-            # 【關鍵】這裡才 return，確保資料已經清洗過且包含完整欄位
-            return df 
-            
-        return pd.DataFrame()
-        
-    except Exception as e:
-        st.error(f"連線細節錯誤: {e}")
-        return pd.DataFrame()
+    now = datetime.datetime.now()
+    year = str(now.year - 1911)
+    month = str(now.month)
+    day = str(now.day)
+    
+    url = "https://mops.twse.com.tw/mops/api/t05st02"
+    payload = {"year": year, "month": month, "day": day}
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+        "Referer": "https://mops.twse.com.tw/mops/web/t05st02",
+        "Content-Type": "application/json"
+    }
+    
+    try:
+        response = requests.post(url, json=payload, headers=headers, timeout=10)
+        if response.status_code != 200:
+            return pd.DataFrame()
+            
+        data = response.json()
+        if data.get('code') == 200 and 'result' in data:
+            data_list = data['result']['data']
+            if not data_list: return pd.DataFrame()
+            
+            # 1. 建立 DataFrame
+            df = pd.DataFrame(data_list, columns=['出表日期', '時間', '公司代號', '公司名稱', '主旨', '詳細資訊'])
+            
+            # 2. 處理日期：轉換為日期物件 (一定要在 return 之前做)
+            def parse_date(date_str):
+                try:
+                    y, m, d = map(int, str(date_str).split('/'))
+                    return datetime.date(y + 1911, m, d)
+                except: return None
+            
+            df['出表日期'] = df['出表日期'].apply(parse_date)
+            df = df.dropna(subset=['出表日期'])
+            
+            # 3. 檢查「詳細資訊」是否為字典型態 (API 回傳有時是字串，需轉為字典)
+            if isinstance(df['詳細資訊'].iloc[0], str):
+                df['詳細資訊'] = df['詳細資訊'].apply(json.loads)
+            
+            # 【關鍵】這裡才 return，確保資料已經清洗過且包含完整欄位
+            return df 
+            
+        return pd.DataFrame()
+        
+    except Exception as e:
+        st.error(f"連線細節錯誤: {e}")
+        return pd.DataFrame()
 
 @st.dialog("重訊詳情", width="large")
 def show_detail(row):
-    url = "https://mops.twse.com.tw/mops/api/t05st02_detail"
-    headers = {
-        "User-Agent": "Mozilla/5.0",
-        "Referer": "https://mops.twse.com.tw/mops/web/t05st02"
-    }
-    
-    try:
-        # 發送請求
-        params = row['詳細資訊']['parameters']
-        response = requests.post(url, json=params, headers=headers)
-        
-        if response.status_code == 200:
-            data = response.json()
-            # 從 JSON 中提取關鍵資料
-            info = data['result']['data'][0]
-            
-            # 顯示標題區塊
-            st.subheader(f"{row['公司名稱']} ({row['公司代號']})")
-            st.markdown(f"**主旨：** {info[6]}")
-            st.divider()
-            
-            # 顯示發言人資訊
-            # 使用 Markdown 的小字體語法 (將文字大小與一般內文一致)
-            st.markdown(f"""
-            **發言人：** {info[3]}  
-            **職稱：** {info[4]}  
-            **電話：** {info[5]}
-            """)
-            
-            # 顯示說明內容 (將 \n 換行符號轉為 Markdown 顯示)
-            st.markdown("### 說明內容")
-            st.text(info[9]) 
-            
-            st.caption(f"事實發生日：{info[8]}")
-        else:
-            st.error("無法取得詳細內容")
-            
-    except Exception as e:
-        st.error(f"解析資料時發生錯誤: {e}")
-    
+    url = "https://mops.twse.com.tw/mops/api/t05st02_detail"
+    headers = {
+        "User-Agent": "Mozilla/5.0",
+        "Referer": "https://mops.twse.com.tw/mops/web/t05st02"
+    }
+    
+    try:
+        # 發送請求
+        params = row['詳細資訊']['parameters']
+        response = requests.post(url, json=params, headers=headers)
+        
+        if response.status_code == 200:
+            data = response.json()
+            # 從 JSON 中提取關鍵資料
+            info = data['result']['data'][0]
+            
+            # 顯示標題區塊
+            st.subheader(f"{row['公司名稱']} ({row['公司代號']})")
+            st.markdown(f"**主旨：** {info[6]}")
+            st.divider()
+            
+            # 顯示發言人資訊
+            st.markdown(f"""
+            **發言人：** {info[3]}  
+            **職稱：** {info[4]}  
+            **電話：** {info[5]}
+            """)
+            
+            # 顯示說明內容 (將 \n 換行符號轉為 Markdown 顯示)
+            st.markdown("### 說明內容")
+            st.text(info[9]) 
+            
+            st.caption(f"事實發生日：{info[8]}")
+        else:
+            st.error("無法取得詳細內容")
+            
+    except Exception as e:
+        st.error(f"解析資料時發生錯誤: {e}")
+    
 with tab5:
-    st.subheader("📰 MOPS每日重大訊息")
-    
-    # 1. 同步按鈕
-    if st.button("🔄 同步最新重大訊息"):
-        with st.spinner('正在同步資料...'):
-            df_temp = fetch_twse_news()
-            if not df_temp.empty:
-                st.session_state.news_data = df_temp
-                st.success(f"同步完成，共獲取 {len(df_temp)} 筆資料")
-            else:
-                st.warning("目前無資料或同步失敗")
+    st.subheader("📰 MOPS每日重大訊息")
+    
+    # 1. 同步按鈕
+    if st.button("🔄 同步最新重大訊息"):
+        with st.spinner('正在同步資料...'):
+            df_temp = fetch_twse_news()
+            if not df_temp.empty:
+                st.session_state.news_data = df_temp
+                st.success(f"同步完成，共獲取 {len(df_temp)} 筆資料")
+            else:
+                st.warning("目前無資料或同步失敗")
 
-    if 'news_data' in st.session_state:
-        df_news = st.session_state.news_data
-        
-       # 2. 篩選介面
-        st.subheader("🔍 重訊篩選條件")
-        col1, col2, col3 = st.columns(3) # 改為 3 欄
-        
-        with col1:
-            search_query = st.text_input("包含關鍵字", value="自結|財報|財務|上半年|第二季")
-        with col2:
-            exclude_query = st.text_input("排除關鍵字", value="召開")
-        with col3:
-            date_range = st.date_input("日期區間", value=(df_news['出表日期'].min(), df_news['出表日期'].max()))
+    if 'news_data' in st.session_state:
+        df_news = st.session_state.news_data
+        
+       # 2. 篩選介面
+        st.subheader("🔍 重訊篩選條件")
+        col1, col2, col3 = st.columns(3) # 改為 3 欄
+        
+        with col1:
+            search_query = st.text_input("包含關鍵字", value="自結|財報|財務|上半年|第二季")
+        with col2:
+            exclude_query = st.text_input("排除關鍵字", value="召開")
+        with col3:
+            date_range = st.date_input("日期區間", value=(df_news['出表日期'].min(), df_news['出表日期'].max()))
 
-        # 3. 篩選邏輯
-        # 包含關鍵字
-        mask_text = df_news['主旨'].str.contains(search_query, case=False, na=False, regex=True)
-        
-        # 排除關鍵字 (若輸入框為空則不排除)
-        if exclude_query.strip():
-            mask_exclude = ~df_news['主旨'].str.contains(exclude_query, case=False, na=False, regex=True)
-        else:
-            mask_exclude = True
-        
-        # 日期篩選
-        if isinstance(date_range, tuple) and len(date_range) == 2:
-            mask_date = (df_news['出表日期'] >= date_range[0]) & (df_news['出表日期'] <= date_range[1])
-        else:
-            mask_date = True
-        
-        # 合併所有條件
-        filtered_news = df_news[mask_text & mask_exclude & mask_date]
+        # 3. 篩選邏輯
+        mask_text = df_news['主旨'].str.contains(search_query, case=False, na=False, regex=True)
+        
+        if exclude_query.strip():
+            mask_exclude = ~df_news['主旨'].str.contains(exclude_query, case=False, na=False, regex=True)
+        else:
+            mask_exclude = True
+        
+        if isinstance(date_range, tuple) and len(date_range) == 2:
+            mask_date = (df_news['出表日期'] >= date_range[0]) & (df_news['出表日期'] <= date_range[1])
+        else:
+            mask_date = True
+        
+        filtered_news = df_news[mask_text & mask_exclude & mask_date]
 
-        # 4. 顯示與點擊事件
-        st.caption(f"共搜尋到 {len(filtered_news)} 筆相關重訊")
-        
-        # 使用 filtered_news 進行顯示，避免篩選條件失效
-        event = st.dataframe(
-            filtered_news[['出表日期', '公司代號', '公司名稱', '主旨']], 
-            use_container_width=True, hide_index=True,
-            on_select="rerun", selection_mode="single-row"
-        )
+        # 4. 顯示與點擊事件
+        st.caption(f"共搜尋到 {len(filtered_news)} 筆相關重訊")
+        
+        event = st.dataframe(
+            filtered_news[['出表日期', '公司代號', '公司名稱', '主旨']], 
+            use_container_width=True, hide_index=True,
+            on_select="rerun", selection_mode="single-row"
+        )
 
-        if event.selection.rows:
-            selected_index = event.selection.rows[0]
-            # 注意：這裡要從 filtered_news 取資料，而不是原本的 df_news
-            selected_row = filtered_news.iloc[selected_index]
-            show_detail(selected_row)
-            
-        # 5. 下載
-        csv = filtered_news.to_csv(index=False, encoding='utf-8-sig').encode('utf-8-sig')
-        st.download_button("📥 下載篩選結果 CSV", data=csv, file_name="filtered_news.csv", mime="text/csv")
+        if event.selection.rows:
+            selected_index = event.selection.rows[0]
+            selected_row = filtered_news.iloc[selected_index]
+            show_detail(selected_row)
+            
+        # 5. 下載
+        csv = filtered_news.to_csv(index=False, encoding='utf-8-sig').encode('utf-8-sig')
+        st.download_button("📥 下載篩選結果 CSV", data=csv, file_name="filtered_news.csv", mime="text/csv")
 
 # 1. 將函式定義在最上方（不要放在 tab 裡面）
 def get_taifex_holdings(url):
