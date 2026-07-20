@@ -621,45 +621,21 @@ def get_taifex_holdings(url):
 with tab6:
     st.subheader("🚀 ETF 成分股查詢區")
     
-    # --- A區：Pocket ETF 成分股直接顯示 ---
+    # --- A區：Pocket ETF 內嵌查詢 ---
     # ==========================================
-    st.markdown("### 📦 ETF 持股明細查詢 (Pocket 來源)")
+    st.markdown("### 📦 ETF 官方頁面即時檢視 (Pocket)")
     etf_ticker = st.text_input("輸入台股 ETF 代號 (例如 0050, 0056):", placeholder="請輸入代號", key="etf_input")
     
     if etf_ticker:
         etf_ticker = etf_ticker.strip().upper()
-        pocket_url = f"https://www.pocket.tw/etf/tw/{etf_ticker}/fundholding"
+        target_url = f"https://www.pocket.tw/etf/tw/{etf_ticker}/"
         
-        if st.button("開始讀取 ETF 持股"):
-            with st.spinner(f"正在讀取 {etf_ticker} 持股明細..."):
-                try:
-                    headers = {'User-Agent': 'Mozilla/5.0'}
-                    dfs = pd.read_html(pocket_url, storage_options={'headers': headers})
-                    
-                    if dfs:
-                        # 通常持股明細會藏在表格中，我們找找看包含「代號」或「名稱」的表格
-                        target_df = None
-                        for df_item in dfs:
-                            cols_str = "".join([str(c) for c in df_item.columns])
-                            if "名稱" in cols_str or "權重" in cols_str or "代號" in cols_str:
-                                target_df = df_item
-                                break
-                        
-                        if target_df is not None and not target_df.empty:
-                            st.success(f"📈 {etf_ticker} 持股明細列表")
-                            st.dataframe(
-                                target_df,
-                                use_container_width=True,
-                                hide_index=True
-                            )
-                        else:
-                            st.warning("在此頁面找不到持股表格，您也可以點擊下方按鈕前往官網查看：")
-                            st.link_button(f"前往 {etf_ticker} Pocket 官方詳細頁面", f"https://www.pocket.tw/etf/tw/{etf_ticker}/")
-                    else:
-                        st.error("無法解析該 ETF 頁面。")
-                except Exception as e:
-                    st.error(f"讀取失敗，可能代號錯誤或網路異常。")
-                    st.link_button(f"手動前往 {etf_ticker} 官方頁面", f"https://www.pocket.tw/etf/tw/{etf_ticker}/")
+        st.success(f"📌 已載入 {etf_ticker} 官方詳細資訊：")
+        # 直接內嵌網頁，讓使用者不用跳轉，在程式內就能直接看持股
+        st.components.v1.iframe(target_url, height=650, scrolling=True)
+        
+        # 額外提供一個備用按鈕以防手機版或排版受限
+        st.link_button(f"🔗 另開新視窗檢視 {etf_ticker} 官網", target_url)
 
     st.divider()
 
