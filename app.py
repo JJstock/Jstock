@@ -621,29 +621,12 @@ def get_taifex_holdings(url):
 with tab6:
     st.subheader("🚀 ETF 成分股查詢區")
     
-    # --- A區：Pocket ETF 內嵌查詢 (解決閃爍) ---
-    # ==========================================
-    st.markdown("### 📦 ETF 官方頁面即時檢視 (Pocket)")
-    
-    # 使用 form 或按鈕控制，避免一打字就整頁觸發重新載入造成閃爍
-    with st.form(key="etf_form"):
-        etf_input = st.text_input("輸入台股 ETF 代號 (例如 0050, 0056):", placeholder="請輸入代號")
-        submit_btn = st.form_submit_button("查詢 ETF 官方頁面")
-    
-    # 用 session_state 記住目前要顯示的網址，避免每次互動都閃爍
-    if submit_btn and etf_input:
-        clean_ticker = etf_input.strip().upper()
-        st.session_state.current_etf_url = f"https://www.pocket.tw/etf/tw/{clean_ticker}/"
-        st.session_state.current_etf_ticker = clean_ticker
-
-    # 只有當 session 裡面有網址時才顯示 iframe，這樣點選其他東西時才不會跟著閃爍
-    if 'current_etf_url' in st.session_state:
-        target_url = st.session_state.current_etf_url
-        ticker_name = st.session_state.current_etf_ticker
-        
-        st.success(f"📌 目前檢視：{ticker_name}")
-        st.components.v1.iframe(target_url, height=650, scrolling=True)
-        st.link_button(f"🔗 另開新視窗檢視 {ticker_name} 官網", target_url)
+      # --- A區：Pocket ETF 查詢 ---
+    ticker = st.text_input("輸入 Pocket ETF 代號 (例如 0050):", placeholder="請輸入代號")
+    if ticker:
+        ticker = ticker.strip()
+        target_url = f"https://www.pocket.tw/etf/tw/{ticker}/"
+        st.link_button(f"前往 {ticker} 詳細頁面", target_url)
 
     st.divider()
     # --- B區：更新後的邏輯 ---
