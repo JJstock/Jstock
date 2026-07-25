@@ -848,11 +848,20 @@ with tab7:
     # 1. 控制選項 (資料固定 5 年)
     col_sym, col_market, col_freq = st.columns([2, 1, 1.5])
     with col_sym:
-        stock_code = st.text_input("輸入股票代號", value="2330").strip()
+        stock_code = st.text_input(
+            "輸入股票代號", value="2330", key="pe_stock_code"
+        ).strip()
     with col_market:
-        market_suffix = st.selectbox("市場類別", options=[".TW", ".TWO"], index=0)
+        market_suffix = st.selectbox(
+            "市場類別", options=[".TW", ".TWO"], index=0, key="pe_market"
+        )
     with col_freq:
-        interval_option = st.selectbox("K線週期", options=["日 (1d)", "週 (1wk)", "月 (1mo)"], index=0)
+        interval_option = st.selectbox(
+            "K線週期",
+            options=["日 (1d)", "週 (1wk)", "月 (1mo)"],
+            index=0,
+            key="pe_freq",
+        )
         freq_map = {"日 (1d)": "1d", "週 (1wk)": "1wk", "月 (1mo)": "1mo"}
 
     target_ticker = f"{stock_code}{market_suffix}" if stock_code else "2330.TW"
@@ -860,15 +869,41 @@ with tab7:
 
     col_pe, col_eps = st.columns([3, 2])
     with col_pe:
-        available_options = [6, 8, 10, 12, 14, 16, 18, 20, 22, 24, 26, 28, 30, 32, 35, 40, 50]
-        selected_pes = st.multiselect("選擇本益比倍數區間", options=available_options, default=[10, 12, 16, 20, 24, 28, 32])
+        available_options = [
+            6,
+            8,
+            10,
+            12,
+            14,
+            16,
+            18,
+            20,
+            22,
+            24,
+            26,
+            28,
+            30,
+            32,
+            35,
+            40,
+            50,
+        ]
+        selected_pes = st.multiselect(
+            "選擇本益比倍數區間",
+            options=available_options,
+            default=[10, 12, 16, 20, 24, 28, 32],
+            key="pe_multiselect",
+        )
         selected_pes = sorted(selected_pes)
 
     with col_eps:
         override_eps = st.number_input(
             "手動校正最新 TTM EPS ( > 0 優先採用)",
-            value=0.0, step=0.5, format="%.2f",
-            help="若 yfinance 缺漏數據，可直接輸入最新 TTM EPS 補救。"
+            value=0.0,
+            step=0.5,
+            format="%.2f",
+            help="若 yfinance 缺漏數據，可直接輸入最新 TTM EPS 補救。",
+            key="pe_override_eps",
         )
 
     # 2. 資料抓取與對齊 (固定 5 年)
@@ -883,7 +918,9 @@ with tab7:
                 return pd.DataFrame()
 
             hist_df = hist_df[["Close"]].copy()
-            hist_df.index = pd.to_datetime(hist_df.index).tz_localize(None).normalize()
+            hist_df.index = (
+                pd.to_datetime(hist_df.index).tz_localize(None).normalize()
+            )
             hist_df = hist_df.sort_index().reset_index()
             hist_df.rename(columns={"index": "Date"}, inplace=True)
 
@@ -893,8 +930,11 @@ with tab7:
 
             if not q_financials.empty:
                 possible_eps_names = [
-                    "Basic EPS", "Diluted EPS", "BasicEPS", "DilutedEPS", 
-                    "Earnings Per Share", "Basic Average Shares"
+                    "Basic EPS",
+                    "Diluted EPS",
+                    "BasicEPS",
+                    "DilutedEPS",
+                    "Earnings Per Share",
                 ]
                 for name in possible_eps_names:
                     if name in q_financials.index:
@@ -905,12 +945,19 @@ with tab7:
             if eps_series is None or len(eps_series) < 4:
                 fallback_eps = ticker.info.get("trailingEps", None)
                 if fallback_eps:
-                    eps_df = pd.DataFrame({"TTM_EPS": [fallback_eps]}, index=[hist_df["Date"].min()])
+                    eps_df = pd.DataFrame(
+                        {"TTM_EPS": [fallback_eps]},
+                        index=[hist_df["Date"].min()],
+                    )
                 else:
                     return pd.DataFrame()
             else:
-                eps_df = pd.DataFrame({"EPS": eps_series}).astype(float).sort_index()
-                eps_df.index = pd.to_datetime(eps_df.index).tz_localize(None).normalize()
+                eps_df = (
+                    pd.DataFrame({"EPS": eps_series}).astype(float).sort_index()
+                )
+                eps_df.index = (
+                    pd.to_datetime(eps_df.index).tz_localize(None).normalize()
+                )
                 eps_df["TTM_EPS"] = eps_df["EPS"].rolling(window=4).sum()
                 eps_df = eps_df.dropna(subset=["TTM_EPS"])
 
@@ -920,15 +967,15 @@ with tab7:
             eps_df = eps_df.reset_index()
             eps_df.rename(columns={"index": "Date"}, inplace=True)
 
-            # C. 時間對齊 (向後補齊，完整對齊 5 年日 K 歷史)
+            # C. 時間對齊 (僅向前補齊 ffill，避免預知未來資料)
             merged_df = pd.merge_asof(
                 hist_df.sort_values("Date"),
                 eps_df[["Date", "TTM_EPS"]].sort_values("Date"),
                 on="Date",
-                direction="backward"
+                direction="backward",
             )
 
-            merged_df["TTM_EPS"] = merged_df["TTM_EPS"].bfill().ffill()
+            merged_df["TTM_EPS"] = merged_df["TTM_EPS"].ffill()
             merged_df = merged_df.dropna(subset=["Close", "TTM_EPS"])
 
             # 計算每日歷史本益比
@@ -943,14 +990,18 @@ with tab7:
     # 3. 讀取數據
     with st.spinner(f"正在讀取 {target_ticker} 近 5 年數據..."):
         df_pe = fetch_pe_data_rainbow_daily(
-            symbol=target_ticker, 
-            period=period_option, 
-            interval=freq_map[interval_option]
+            symbol=target_ticker,
+            period=period_option,
+            interval=freq_map[interval_option],
         )
 
     if df_pe.empty or len(selected_pes) < 2:
-        st.error(f"❌ 無法取得 {target_ticker} 數據，或本益比倍數選擇少於 2 個。")
-        st.info("💡 提示：若為上櫃股票或季報缺失，可於「手動校正最新 TTM EPS」欄位手動填入數據。")
+        st.error(
+            f"❌ 無法取得 {target_ticker} 數據，或本益比倍數選擇少於 2 個。"
+        )
+        st.info(
+            "💡 提示：若為上櫃股票或季報缺失，可於「手動校正最新 TTM EPS」欄位手動填入數據。"
+        )
     else:
         df_pe = df_pe.copy()
 
@@ -961,46 +1012,62 @@ with tab7:
             df_pe.loc[last_idx, "TTM_EPS"] = override_eps
             df_pe["Hist_PE"] = df_pe["Close"] / df_pe["TTM_EPS"]
 
-        # 計算本益比區間
+        # 計算本益比區間價格線
         for pe in selected_pes:
             df_pe[f"{pe}x"] = df_pe["TTM_EPS"] * pe
 
         # 4. 繪製彩虹版 Plotly 河流圖
         fig = go.Figure()
         rainbow_colors = [
-            "rgba(148, 0, 211, 0.25)", "rgba(0, 0, 255, 0.25)",
-            "rgba(0, 255, 0, 0.25)", "rgba(255, 255, 0, 0.25)",
-            "rgba(255, 165, 0, 0.25)", "rgba(255, 0, 0, 0.25)",
+            "rgba(148, 0, 211, 0.25)",
+            "rgba(0, 0, 255, 0.25)",
+            "rgba(0, 255, 0, 0.25)",
+            "rgba(255, 255, 0, 0.25)",
+            "rgba(255, 165, 0, 0.25)",
+            "rgba(255, 0, 0, 0.25)",
         ]
 
         # 最底線 (底邊邊界)
         lowest_pe = selected_pes[0]
-        fig.add_trace(go.Scatter(
-            x=df_pe["Date"], y=df_pe[f"{lowest_pe}x"],
-            mode="lines", line=dict(width=0.5, color="rgba(150, 150, 150, 0.3)"),
-            showlegend=False, hoverinfo="skip"
-        ))
+        fig.add_trace(
+            go.Scatter(
+                x=df_pe["Date"],
+                y=df_pe[f"{lowest_pe}x"],
+                mode="lines",
+                line=dict(width=0.5, color="rgba(150, 150, 150, 0.3)"),
+                showlegend=False,
+                hoverinfo="skip",
+            )
+        )
 
         # 彩虹區間填色
         for i in range(len(selected_pes) - 1):
             low_val, high_val = selected_pes[i], selected_pes[i + 1]
             color = rainbow_colors[i % len(rainbow_colors)]
-            fig.add_trace(go.Scatter(
-                x=df_pe["Date"], y=df_pe[f"{high_val}x"],
-                mode="lines", line=dict(width=0.5, color="rgba(150, 150, 150, 0.2)"),
-                fill="tonexty", fillcolor=color, name=f"{low_val}x - {high_val}x PE",
-                hovertemplate=f"<b>{low_val}x - {high_val}x 區間</b><br>上限價: %{{y:.1f}} TWD<extra></extra>"
-            ))
+            fig.add_trace(
+                go.Scatter(
+                    x=df_pe["Date"],
+                    y=df_pe[f"{high_val}x"],
+                    mode="lines",
+                    line=dict(width=0.5, color="rgba(150, 150, 150, 0.2)"),
+                    fill="tonexty",
+                    fillcolor=color,
+                    name=f"{low_val}x - {high_val}x PE",
+                    hovertemplate=f"<b>{low_val}x - {high_val}x 區間</b><br>上限價: %{{y:.1f}} TWD<extra></extra>",
+                )
+            )
 
         # 收盤價實體線
-        fig.add_trace(go.Scatter(
-            x=df_pe["Date"],
-            y=df_pe["Close"],
-            mode="lines",
-            name=f"收盤價",
-            line=dict(color="#D32F2F", width=2.5),
-            hovertemplate="<b>收盤價</b>: NT$%{y:.1f}<extra></extra>",
-        ))
+        fig.add_trace(
+            go.Scatter(
+                x=df_pe["Date"],
+                y=df_pe["Close"],
+                mode="lines",
+                name="收盤價",
+                line=dict(color="#D32F2F", width=2.5),
+                hovertemplate="<b>收盤價</b>: NT$%{y:.1f}<extra></extra>",
+            )
+        )
 
         # Layout 設置
         fig.update_layout(
@@ -1014,15 +1081,32 @@ with tab7:
                 showgrid=True,
                 gridcolor="#E0E0E0",
                 rangeselector=dict(
-                    buttons=list([
-                        dict(count=6, label="6月", step="month", stepmode="backward"),
-                        dict(count=1, label="1年", step="year", stepmode="backward"),
-                        dict(count=3, label="3年", step="year", stepmode="backward"),
-                        dict(step="all", label="近5年")
-                    ])
+                    buttons=list(
+                        [
+                            dict(
+                                count=6,
+                                label="6月",
+                                step="month",
+                                stepmode="backward",
+                            ),
+                            dict(
+                                count=1,
+                                label="1年",
+                                step="year",
+                                stepmode="backward",
+                            ),
+                            dict(
+                                count=3,
+                                label="3年",
+                                step="year",
+                                stepmode="backward",
+                            ),
+                            dict(step="all", label="近5年"),
+                        ]
+                    )
                 ),
                 rangeslider=dict(visible=True),
-                type="date"
+                type="date",
             ),
             yaxis_title="價格 (TWD)",
             hovermode="x unified",
@@ -1040,7 +1124,7 @@ with tab7:
             yaxis=dict(tickformat=".1f"),
         )
 
-        # 5. 版面排版：左圖右統計
+        # 5. 版面排版：雙欄渲染 (左圖右統計)
         col_chart, col_metric = st.columns([3.2, 1.2])
 
         with col_chart:
@@ -1055,12 +1139,14 @@ with tab7:
             curr_pe = curr_price / curr_eps if curr_eps > 0 else 0
 
             # 計算近 5 年歷史 PE 統計
-            valid_pes = df_pe["Hist_PE"].replace([np.inf, -np.inf], np.nan).dropna()
-            
+            valid_pes = (
+                df_pe["Hist_PE"].replace([np.inf, -np.inf], np.nan).dropna()
+            )
+
             pe_p20 = np.percentile(valid_pes, 20)
             pe_p50 = np.percentile(valid_pes, 50)
             pe_p80 = np.percentile(valid_pes, 80)
-            
+
             pe_min = valid_pes.min()
             pe_max = valid_pes.max()
             pct_rank = (valid_pes < curr_pe).mean() * 100
@@ -1081,25 +1167,47 @@ with tab7:
             else:
                 status_color, status_text = "#FB8C00", "🟡 合理 (適中)"
 
-            st.markdown(f"**當前 PE:** <span style='color:{status_color}; font-size:22px; font-weight:bold;'>{curr_pe:.2f} 倍</span>", unsafe_allow_html=True)
-            st.markdown(f"**位階狀態:** <span style='color:{status_color}; font-weight:bold;'>{status_text}</span>", unsafe_allow_html=True)
+            st.markdown(
+                f"**當前 PE:** <span style='color:{status_color}; font-size:22px; font-weight:bold;'>{curr_pe:.2f} 倍</span>",
+                unsafe_allow_html=True,
+            )
+            st.markdown(
+                f"**位階狀態:** <span style='color:{status_color}; font-weight:bold;'>{status_text}</span>",
+                unsafe_allow_html=True,
+            )
             st.caption(f"高於近 5 年歷史 {pct_rank:.0f}% 時間")
 
             st.markdown("---")
             st.subheader("📊 近 5 年歷史 PE 區間")
 
             pe_stats_data = {
-                "位階別": ["低點 (Min)", "便宜 (20%)", "合理 (50%)", "昂貴 (80%)", "高點 (Max)"],
-                "PE 倍數": [f"{pe_min:.1f}x", f"{pe_p20:.1f}x", f"{pe_p50:.1f}x", f"{pe_p80:.1f}x", f"{pe_max:.1f}x"],
+                "位階別": [
+                    "低點 (Min)",
+                    "便宜 (20%)",
+                    "合理 (50%)",
+                    "昂貴 (80%)",
+                    "高點 (Max)",
+                ],
+                "PE 倍數": [
+                    f"{pe_min:.1f}x",
+                    f"{pe_p20:.1f}x",
+                    f"{pe_p50:.1f}x",
+                    f"{pe_p80:.1f}x",
+                    f"{pe_max:.1f}x",
+                ],
                 "對應目標價": [
                     f"{pe_min * curr_eps:.1f}",
                     f"{pe_p20 * curr_eps:.1f}",
                     f"{pe_p50 * curr_eps:.1f}",
                     f"{pe_p80 * curr_eps:.1f}",
-                    f"{pe_max * curr_eps:.1f}"
-                ]
+                    f"{pe_max * curr_eps:.1f}",
+                ],
             }
-            st.dataframe(pd.DataFrame(pe_stats_data), use_container_width=True, hide_index=True)
+            st.dataframe(
+                pd.DataFrame(pe_stats_data),
+                use_container_width=True,
+                hide_index=True,
+            )
 
         with st.expander("查看近 5 年完整明細"):
             st.dataframe(
