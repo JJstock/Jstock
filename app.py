@@ -844,7 +844,18 @@ with tab6:
 with tab7:
     st.header("本益比河流圖 (上市/上櫃) - 彩虹色調")
     st.caption("資料來源：yfinance (自動進行 TTM EPS 與每日股價對齊)")
+# 在 sidebar 或控制區加上校正輸入框
+override_eps = st.number_input(
+    "手動校正最新 TTM EPS (若輸入 > 0 則優先採用)",
+    value=0.0,
+    step=0.5,
+    format="%.2f",
+)
 
+# 在計算區間時：
+if override_eps > 0:
+    latest_eps = override_eps
+    # 將整條歷史 TTM_EPS 換成最新輸入值，或是繪圖時僅採用該最新 EPS 算出的階梯
     # 1. 股票代號與控制參數設定區
     col_sym, col_market, col_period = st.columns([2, 1, 2])
 
