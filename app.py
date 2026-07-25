@@ -873,86 +873,86 @@ with tab7:
 
     # 2. 資料抓取函式 (支援動態傳入 symbol)
     @st.cache_data(ttl=3600)
-def fetch_pe_data(symbol, period="5y"):
-        try:
-            ticker = yf.Ticker(symbol)
-
-            # 1. 抓取歷史股價
-            hist_df = ticker.history(period=period)
-            if hist_df.empty:
+    def fetch_pe_data(symbol, period="5y"):
+            try:
+                ticker = yf.Ticker(symbol)
+    
+                # 1. 抓取歷史股價
+                hist_df = ticker.history(period=period)
+                if hist_df.empty:
+                    return pd.DataFrame()
+    
+                hist_df = hist_df[["Close"]].copy()
+                hist_df.index = pd.to_datetime(hist_df.index).tz_localize(None).normalize()
+    
+                # 2. 抓取季報財務資料（雙重備援機制）
+                q_financials = ticker.quarterly_financials
+                if q_financials is None or q_financials.empty:
+                    # 若 quarterly_financials 為空，改抓 quarterly_incomestmt
+                    q_financials = ticker.quarterly_incomestmt
+    
+                if q_financials is None or q_financials.empty:
+                    return pd.DataFrame()
+    
+                # 廣義比對 EPS 相關欄位名
+                eps_row = None
+                possible_eps_names = [
+                    "Basic EPS", 
+                    "Diluted EPS", 
+                    "BasicEPS", 
+                    "DilutedEPS", 
+                    "Normalized EPS", 
+                    "Diluted NI Available to Com Stockholders",
+                    "Diluted EPS Including Extraordinary Items"
+                ]
+                
+                for candidate in possible_eps_names:
+                    if candidate in q_financials.index:
+                        eps_row = q_financials.loc[candidate]
+                        break
+    
+                # 模糊比對備用方案
+                if eps_row is None:
+                    matching_indices = [idx for idx in q_financials.index if "EPS" in str(idx).upper()]
+                    if matching_indices:
+                        eps_row = q_financials.loc[matching_indices[0]]
+    
+                if eps_row is None:
+                    return pd.DataFrame()
+    
+                # 轉為 DataFrame，並「嚴格依時間由舊到新排序」
+                eps_df = pd.DataFrame({"EPS": eps_row}).dropna()
+                eps_df.index = pd.to_datetime(eps_df.index).tz_localize(None).normalize()
+                eps_df = eps_df.sort_index(ascending=True)
+    
+                # 計算 TTM EPS (滾動 4 季求和，若季數不滿 4 季則允許 min_periods=1 彈性計算)
+                eps_df["TTM_EPS"] = eps_df["EPS"].rolling(window=4, min_periods=4).sum()
+    
+                # 3. 合併股價與每季 TTM EPS
+                merged_df = pd.merge(
+                    hist_df,
+                    eps_df[["TTM_EPS"]],
+                    left_index=True,
+                    right_index=True,
+                    how="left"
+                )
+    
+                # 向下填補 TTM EPS
+                merged_df["TTM_EPS"] = merged_df["TTM_EPS"].ffill()
+    
+                # 移除未滿 4 季資料的早期空白橫列
+                merged_df = merged_df.dropna(subset=["TTM_EPS", "Close"]).copy()
+    
+                # 整理 Date 欄位
+                merged_df = merged_df.reset_index()
+                if "index" in merged_df.columns:
+                    merged_df.rename(columns={"index": "Date"}, inplace=True)
+    
+                return merged_df
+    
+            except Exception as e:
+                st.error(f"抓取或解析 {symbol} 資料時發生錯誤: {e}")
                 return pd.DataFrame()
-
-            hist_df = hist_df[["Close"]].copy()
-            hist_df.index = pd.to_datetime(hist_df.index).tz_localize(None).normalize()
-
-            # 2. 抓取季報財務資料（雙重備援機制）
-            q_financials = ticker.quarterly_financials
-            if q_financials is None or q_financials.empty:
-                # 若 quarterly_financials 為空，改抓 quarterly_incomestmt
-                q_financials = ticker.quarterly_incomestmt
-
-            if q_financials is None or q_financials.empty:
-                return pd.DataFrame()
-
-            # 廣義比對 EPS 相關欄位名
-            eps_row = None
-            possible_eps_names = [
-                "Basic EPS", 
-                "Diluted EPS", 
-                "BasicEPS", 
-                "DilutedEPS", 
-                "Normalized EPS", 
-                "Diluted NI Available to Com Stockholders",
-                "Diluted EPS Including Extraordinary Items"
-            ]
-            
-            for candidate in possible_eps_names:
-                if candidate in q_financials.index:
-                    eps_row = q_financials.loc[candidate]
-                    break
-
-            # 模糊比對備用方案
-            if eps_row is None:
-                matching_indices = [idx for idx in q_financials.index if "EPS" in str(idx).upper()]
-                if matching_indices:
-                    eps_row = q_financials.loc[matching_indices[0]]
-
-            if eps_row is None:
-                return pd.DataFrame()
-
-            # 轉為 DataFrame，並「嚴格依時間由舊到新排序」
-            eps_df = pd.DataFrame({"EPS": eps_row}).dropna()
-            eps_df.index = pd.to_datetime(eps_df.index).tz_localize(None).normalize()
-            eps_df = eps_df.sort_index(ascending=True)
-
-            # 計算 TTM EPS (滾動 4 季求和，若季數不滿 4 季則允許 min_periods=1 彈性計算)
-            eps_df["TTM_EPS"] = eps_df["EPS"].rolling(window=4, min_periods=4).sum()
-
-            # 3. 合併股價與每季 TTM EPS
-            merged_df = pd.merge(
-                hist_df,
-                eps_df[["TTM_EPS"]],
-                left_index=True,
-                right_index=True,
-                how="left"
-            )
-
-            # 向下填補 TTM EPS
-            merged_df["TTM_EPS"] = merged_df["TTM_EPS"].ffill()
-
-            # 移除未滿 4 季資料的早期空白橫列
-            merged_df = merged_df.dropna(subset=["TTM_EPS", "Close"]).copy()
-
-            # 整理 Date 欄位
-            merged_df = merged_df.reset_index()
-            if "index" in merged_df.columns:
-                merged_df.rename(columns={"index": "Date"}, inplace=True)
-
-            return merged_df
-
-        except Exception as e:
-            st.error(f"抓取或解析 {symbol} 資料時發生錯誤: {e}")
-            return pd.DataFrame()
 
     # 3. 讀取資料與圖表渲染
     with st.spinner(f"正在讀取 {target_ticker} 歷史價格與財務數據..."):
