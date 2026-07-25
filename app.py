@@ -840,7 +840,7 @@ with tab6:
                 st.error("無法抓取資料，請確認該頁面表格結構是否變更。")
 
 
-# --- TAB 7: 通用台股本益比河流圖 (修復 2317.TW / 8299.TWO 抓取問題) ---
+# --- TAB 7: 通用台股本益比河流圖 (彩虹版 - 單一圖表精簡版) ---
 with tab7:
     st.header("本益比河流圖 (上市/上櫃) - 彩虹色調")
     st.caption("資料來源：yfinance (已修正 8299.TWO / 2317.TW 數據對齊問題)")
@@ -890,7 +890,6 @@ with tab7:
             eps_series = None
 
             if not q_financials.empty:
-                # 嘗試多種 yfinance 可能出現的 EPS 欄位名稱
                 possible_eps_names = [
                     "Basic EPS", "Diluted EPS", "BasicEPS", "DilutedEPS", 
                     "Earnings Per Share", "Basic Average Shares"
@@ -901,18 +900,15 @@ with tab7:
                         if not eps_series.empty:
                             break
 
-            # 備援機制：如果連季報都抓不到 EPS，嘗試使用 fast_info 或 info 的 trailingEps
             if eps_series is None or len(eps_series) < 4:
-                # 若完全沒季報 EPS，建構一個包含預設/最新 EPS 的暫存資料
                 fallback_eps = ticker.info.get("trailingEps", None)
                 if fallback_eps:
                     eps_df = pd.DataFrame({"TTM_EPS": [fallback_eps]}, index=[hist_df["Date"].min()])
                 else:
-                    return pd.DataFrame() # 真的無數據才放棄
+                    return pd.DataFrame()
             else:
                 eps_df = pd.DataFrame({"EPS": eps_series}).astype(float).sort_index()
                 eps_df.index = pd.to_datetime(eps_df.index).tz_localize(None).normalize()
-                # 計算 TTM EPS (滾動 4 季)
                 eps_df["TTM_EPS"] = eps_df["EPS"].rolling(window=4).sum()
                 eps_df = eps_df.dropna(subset=["TTM_EPS"])
 
@@ -922,15 +918,14 @@ with tab7:
             eps_df = eps_df.reset_index()
             eps_df.rename(columns={"index": "Date"}, inplace=True)
 
-            # C. 🌟【核心修復】：使用 merge_asof 進行時間不精確對齊 (往前找最近的 EPS)
+            # C. 時間不精確對齊 (往前找最近的 EPS)
             merged_df = pd.merge_asof(
                 hist_df.sort_values("Date"),
                 eps_df[["Date", "TTM_EPS"]].sort_values("Date"),
                 on="Date",
-                direction="backward" # 拿當下或過去最新的 EPS
+                direction="backward"
             )
 
-            # 剔除尚未累積到第一筆 TTM EPS 前的早期歷史空值
             merged_df = merged_df.dropna(subset=["TTM_EPS", "Close"])
             return merged_df
 
@@ -958,7 +953,7 @@ with tab7:
         for pe in selected_pes:
             df_pe[f"{pe}x"] = df_pe["TTM_EPS"] * pe
 
-        # 4. 繪製 Plotly
+        # 4. 繪製 Plotly (組裝全圖 Trace)
         fig = go.Figure()
         rainbow_colors = [
             "rgba(148, 0, 211, 0.25)", "rgba(0, 0, 255, 0.25)",
@@ -974,42 +969,28 @@ with tab7:
             showlegend=False, hoverinfo="skip"
         ))
 
-        # 彩虹區間
+        # 彩虹河流區間
         for i in range(len(selected_pes) - 1):
             low_val, high_val = selected_pes[i], selected_pes[i + 1]
             color = rainbow_colors[i % len(rainbow_colors)]
             fig.add_trace(go.Scatter(
                 x=df_pe["Date"], y=df_pe[f"{high_val}x"],
                 mode="lines", line=dict(width=0.5, color="rgba(150, 150, 150, 0.2)"),
-                fill="tonexty", fillcolor=color, name=f"{low_val}x - {high_val}x PE"
+                fill="tonexty", fillcolor=color, name=f"{low_val}x - {high_val}x PE",
+                hovertemplate=f"<b>{low_val}x - {high_val}x 區間</b><br>上限價: %{{y:.1f}} TWD<extra></extra>"
             ))
 
-        # 股價線
+        # 股價實體線 (疊加最上層)
         fig.add_trace(go.Scatter(
-            x=df_pe["Date"], y=df_pe["Close"],
-            mode="lines", name="收盤價", line=dict(color="black", width=2)
+            x=df_pe["Date"],
+            y=df_pe["Close"],
+            mode="lines",
+            name=f"{target_ticker} 收盤價",
+            line=dict(color="#D32F2F", width=3),
+            hovertemplate="<b>收盤價</b>: NT$%{y:.1f}<extra></extra>",
         ))
 
-        fig.update_layout(
-            title=f"{target_ticker} 本益比河流圖",
-            hovermode="x unified",
-            xaxis_title="日期", yaxis_title="價格 (TWD)"
-        )
-
-        st.plotly_chart(fig, use_container_width=True)
-
-        # 股價實體線
-        fig.add_trace(
-            go.Scatter(
-                x=df_pe["Date"],
-                y=df_pe["Close"],
-                mode="lines",
-                name=f"{target_ticker} 收盤價",
-                line=dict(color="#D32F2F", width=3),
-                hovertemplate="<b>收盤價</b>: NT$%{y:.1f}<extra></extra>",
-            )
-        )
-
+        # 統一圖表版面設定
         fig.update_layout(
             title=dict(
                 text=f"{target_ticker} 本益比河流圖 ({period_option}) - 彩虹版",
@@ -1032,6 +1013,7 @@ with tab7:
             yaxis=dict(tickformat=".1f"),
         )
 
+        # 5. 版面排版 (只在 col_chart 中渲染一次圖表)
         col_chart, col_metric = st.columns([3.5, 1])
 
         with col_chart:
