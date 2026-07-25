@@ -844,13 +844,6 @@ with tab6:
 with tab7:
     st.header("本益比河流圖 (上市/上櫃) - 彩虹色調")
     st.caption("資料來源：yfinance (自動進行 TTM EPS 與每日股價對齊)")
-# 在 sidebar 或控制區加上校正輸入框
-override_eps = st.number_input(
-    "手動校正最新 TTM EPS (若輸入 > 0 則優先採用)",
-    value=0.0,
-    step=0.5,
-    format="%.2f",
-)
 
 # 在計算區間時：
 if override_eps > 0:
@@ -883,9 +876,7 @@ if override_eps > 0:
             8,
             10,
             12,
-            14,
             15,
-            16,
             18,
             20,
             22,
@@ -1155,3 +1146,10 @@ if override_eps > 0:
                 }),
                 use_container_width=True,
             )
+# 在 sidebar 或控制區加上校正輸入框
+override_eps = st.number_input(
+    "手動校正最新 TTM EPS (若輸入 > 0 則優先採用)",
+    value=0.0,
+    step=0.5,
+    format="%.2f",
+)
