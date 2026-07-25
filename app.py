@@ -842,8 +842,8 @@ with tab6:
 
 # --- TAB 7: 通用台股本益比河流圖 (彩虹填色版 + 日 K + 5年固定) ---
 with tab7:
-    st.header("本益比河流圖 (上市/上櫃) - 5年彩虹日 K 版")
-    st.caption("彩虹填色風格 + 5年日 K 線 + 歷史本益比區間統計")
+    st.header("本益比河流圖")
+    st.caption("彩虹填色風格+5年日K線+歷史本益比區間統計")
 
     # 1. 控制選項 (資料固定 5 年)
     col_sym, col_market, col_freq = st.columns([2, 1, 1.5])
