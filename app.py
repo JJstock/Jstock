@@ -840,15 +840,16 @@ with tab6:
                 st.error("無法抓取資料，請確認該頁面表格結構是否變更。")
 
 
-# --- TAB 7: 通用台股本益比河流圖 ---
+# --- TAB 7: 通用台股本益比河流圖 (彩虹版) ---
 with tab7:
-    st.header("本益比河流圖 (上市/上櫃)")
+    st.header("本益比河流圖 (上市/上櫃) - 彩虹色調")
     st.caption("資料來源：yfinance (自動進行 TTM EPS 與每日股價對齊)")
 
     # 1. 股票代號與控制參數設定區
     col_sym, col_market, col_period = st.columns([2, 1, 2])
 
     with col_sym:
+        # 預設為聯發科 2454
         stock_code = st.text_input("輸入股票代號", value="2454").strip()
 
     with col_market:
@@ -858,21 +859,25 @@ with tab7:
         period_option = st.selectbox(
             "歷史時間範圍",
             options=["1y", "2y", "3y", "5y", "max"],
-            index=3,
+            index=3, # 預設 5y
         )
 
+    # 組合完整的 yfinance ticker 名稱
     target_ticker = f"{stock_code}{market_suffix}" if stock_code else "2454.TW"
 
+    # 設定預設的本益比區間 (建議選 6 個區間，剛好配 6 種填滿色)
+    default_pe_ranges = [10, 12, 16, 20, 24, 28, 32]
     selected_pes = st.multiselect(
-        "選擇本益比倍數區間",
-        options=[10, 12, 15, 18, 20, 22, 25, 28, 30, 35, 40, 50],
-        default=[12, 15, 18, 22, 25],
+        "選擇本益比倍數區間 (排序影響彩虹顏色分佈)",
+        options=[8, 10, 12, 14, 15, 16, 18, 20, 22, 24, 25, 26, 28, 30, 32, 35, 40, 50],
+        default=default_pe_ranges,
     )
+    # 確保由小到大排序，這對河流圖的堆疊非常重要
     selected_pes = sorted(selected_pes)
 
-    # 2. 強化版資料抓取與對齊函式
+    # 2. 強化版資料抓取與對齊函式 (沿用之前修正 Look-ahead Bias 的版本)
     @st.cache_data(ttl=3600)
-    def fetch_pe_data(symbol, period="5y"):
+    def fetch_pe_data_rainbow(symbol, period="5y"):
         try:
             ticker = yf.Ticker(symbol)
             
@@ -882,10 +887,11 @@ with tab7:
                 return pd.DataFrame()
 
             hist_df = hist_df[["Close"]].copy()
+            # 移除時區資訊並正規化日期
             hist_df.index = pd.to_datetime(hist_df.index).tz_localize(None).normalize()
             hist_df = hist_df.sort_index()
 
-            # 2. 抓取季報財務資料（多重備援機制）
+            # 2. 抓取季報財務資料
             q_financials = ticker.quarterly_financials
             if q_financials is None or q_financials.empty:
                 q_financials = ticker.quarterly_incomestmt
@@ -896,73 +902,52 @@ with tab7:
             # 多重搜尋 EPS 相關欄位
             eps_series = None
             possible_eps_names = [
-                "Basic EPS", 
-                "Diluted EPS", 
-                "BasicEPS", 
-                "DilutedEPS", 
-                "Normalized EPS", 
-                "Diluted NI Available to Com Stockholders",
-                "Diluted EPS Including Extraordinary Items"
+                "Basic EPS", "Diluted EPS", "BasicEPS", "DilutedEPS", 
+                "Normalized EPS", "Diluted NI Available to Com Stockholders"
             ]
             
-            # (a) 精準匹配
+            # 精準匹配
             for candidate in possible_eps_names:
                 if candidate in q_financials.index:
                     eps_series = q_financials.loc[candidate]
                     break
-
-            # (b) 模糊匹配
+            # 模糊匹配
             if eps_series is None:
                 matching_indices = [idx for idx in q_financials.index if "EPS" in str(idx).upper()]
                 if matching_indices:
                     eps_series = q_financials.loc[matching_indices[0]]
 
-            # (c) 備援推算：若依然抓不到 EPS，用 Net Income / 股數 推算
-            if eps_series is None:
-                net_income_names = ["Net Income Common Stockholders", "Net Income", "Net Income From Continuing Operation Net Minority Interest"]
-                shares_names = ["Diluted Average Shares", "Basic Average Shares"]
-                
-                net_inc = None
-                shares = None
-                
-                for ni_name in net_income_names:
-                    if ni_name in q_financials.index:
-                        net_inc = q_financials.loc[ni_name]
-                        break
-                for s_name in shares_names:
-                    if s_name in q_financials.index:
-                        shares = q_financials.loc[s_name]
-                        break
-                
-                if net_inc is not None and shares is not None:
-                    eps_series = net_inc / shares
-
             if eps_series is None:
                 return pd.DataFrame()
 
-            # 轉換為數值並排序
+            # 轉換為數值、dropna、排序
             eps_df = pd.DataFrame({"EPS": eps_series})
             eps_df["EPS"] = pd.to_numeric(eps_df["EPS"], errors="coerce")
             eps_df = eps_df.dropna()
             eps_df.index = pd.to_datetime(eps_df.index).tz_localize(None).normalize()
             eps_df = eps_df.sort_index(ascending=True)
 
-            # 計算 TTM EPS (滾動求和，放寬 min_periods 避免不足 4 季時整張清空)
+            # 計算 TTM EPS (滾動求和， min_periods=1 彈性處理初期資料)
             eps_df["TTM_EPS"] = eps_df["EPS"].rolling(window=4, min_periods=1).sum()
             eps_df = eps_df.dropna(subset=["TTM_EPS"])
 
             if eps_df.empty:
                 return pd.DataFrame()
 
-            # 3. 使用 merge_asof 對齊時間軸
+            # 3. 使用 merge_asof 對齊時間軸 (防止對齊季度結束日的 Look-ahead Bias)
             hist_df = hist_df.reset_index().rename(columns={"Date": "Date"})
             eps_df = eps_df.reset_index().rename(columns={"index": "Date"})
 
+            # 將 EPS 日期向後推 45 天 (粗略估算財報公佈日)，讓資料更貼近現實已知狀態
+            # (注意：這是一個簡化的處理，最準確應使用實際公佈日資料，但 yfinance 不易取得)
+            eps_df_lagged = eps_df.copy()
+            eps_df_lagged["Date"] = eps_df_lagged["Date"] + pd.Timedelta(days=45)
+
             merged_df = pd.merge_asof(
                 hist_df.sort_values("Date"),
-                eps_df[["Date", "TTM_EPS"]].sort_values("Date"),
+                eps_df_lagged[["Date", "TTM_EPS"]].sort_values("Date"),
                 on="Date",
-                direction="backward"
+                direction="backward" # 匹配當前股價日期「之前」最新的財報 TTM EPS
             )
 
             merged_df = merged_df.dropna(subset=["TTM_EPS", "Close"]).copy()
@@ -972,108 +957,145 @@ with tab7:
             st.error(f"解析 {symbol} 資料時發生錯誤: {e}")
             return pd.DataFrame()
 
-    # 3. 讀取資料與繪圖
-    with st.spinner(f"正在讀取 {target_ticker} 歷史價格與財務數據..."):
-        df_pe = fetch_pe_data(symbol=target_ticker, period=period_option)
+    # 3. 讀取資料與圖表渲染
+    with st.spinner(f"正在讀取 {target_ticker} 歷史價格與財務數據 (彩虹版)..."):
+        df_pe = fetch_pe_data_rainbow(symbol=target_ticker, period=period_option)
 
+    # 驗證資料：至少需要 2 個 PE 倍數才能構成「區間」填色
     if df_pe.empty or len(selected_pes) < 2:
         st.warning(
-            f"⚠️ 無法取得 {target_ticker} 資料（請確認代號與市場類別是否正確），或請至少選擇 2 個以上的本益比倍數！"
+            f"⚠️ 無法取得 {target_ticker} 資料，或請至少選擇 2 個以上的本益比倍數！"
         )
     else:
+        # 計算各本益比倍數對應的價格線
         for pe in selected_pes:
             df_pe[f"{pe}x"] = df_pe["TTM_EPS"] * pe
 
         fig = go.Figure()
 
-        fill_colors = [
-            "rgba(227, 242, 253, 0.4)",
-            "rgba(187, 222, 251, 0.4)",
-            "rgba(144, 202, 249, 0.4)",
-            "rgba(100, 181, 246, 0.4)",
-            "rgba(33, 150, 243, 0.4)",
-            "rgba(30, 136, 229, 0.4)",
-            "rgba(21, 101, 192, 0.4)",
+        # --- 定義彩虹色調 (RGBA，支援透明度) ---
+        # 排序邏輯：P/E 從低到高，顏色從紫到紅 (高估值顯示紅色報警)
+        # 顏色分別對應：紫、藍、綠、黃、橙、紅
+        rainbow_colors = [
+            "rgba(148, 0, 211, 0.35)",   # Violet (紫) - 最低估值區間
+            "rgba(0, 0, 255, 0.35)",     # Blue (藍)
+            "rgba(0, 255, 0, 0.35)",     # Green (綠)
+            "rgba(255, 255, 0, 0.35)",   # Yellow (黃)
+            "rgba(255, 165, 0, 0.35)",   # Orange (橙)
+            "rgba(255, 0, 0, 0.35)",     # Red (紅)   - 最高估值區間
         ]
 
-        # 基礎邊界線
+        # 1. 先畫出最低的 P/E 基準線 (不填色，作為堆疊基礎)
+        lowest_pe = selected_pes[0]
         fig.add_trace(
             go.Scatter(
                 x=df_pe["Date"],
-                y=df_pe[f"{selected_pes[0]}x"],
+                y=df_pe[f"{lowest_pe}x"],
                 mode="lines",
-                line=dict(width=0.5, color="rgba(100, 181, 246, 0.5)"),
+                line=dict(width=0.5, color="rgba(150, 150, 150, 0.3)"),
                 showlegend=False,
-                hoverinfo="skip",
+                hoverinfo="skip", # 基準線不顯示 Hover
             )
         )
 
-        # 河流填滿區間
-        for i in range(len(selected_pes) - 1):
-            low_pe = selected_pes[i]
-            high_pe = selected_pes[i + 1]
-            c_idx = i % len(fill_colors)
+        # 2. 依序畫出其他 P/E 線，並填滿與「上一條線」之間的區域 (tonexty)
+        num_intervals = len(selected_pes) - 1
+        for i in range(num_intervals):
+            low_pe_val = selected_pes[i]
+            high_pe_val = selected_pes[i + 1]
+            
+            # 依據區間索引選擇彩虹顏色，若區間數超過顏色數則循環使用
+            color_idx = i % len(rainbow_colors)
+            current_fill_color = rainbow_colors[color_idx]
 
+            # 畫較高的那條 P/E 線，並填滿下方
             fig.add_trace(
                 go.Scatter(
                     x=df_pe["Date"],
-                    y=df_pe[f"{high_pe}x"],
+                    y=df_pe[f"{high_pe_val}x"],
                     mode="lines",
-                    line=dict(width=0.5, color="rgba(100, 181, 246, 0.5)"),
-                    fill="tonexty",
-                    fillcolor=fill_colors[c_idx],
-                    name=f"{low_pe}x - {high_pe}x PE",
-                    hovertemplate=f"<b>{low_pe}x - {high_pe}x 區間</b><br>價格: %{{y:.1f}} TWD<extra></extra>",
+                    line=dict(width=0.5, color="rgba(150, 150, 150, 0.2)"), # 邊界線淡淡的
+                    fill="tonexty", # 填滿與上一條 Trace (即低一位的 P/E 線) 之間的區域
+                    fillcolor=current_fill_color,
+                    name=f"{low_pe_val}x - {high_pe_val}x PE",
+                    hovertemplate=f"<b>{low_pe_val}x - {high_pe_val}x 區間</b><br>價格: %{{y:.1f}} TWD<extra></extra>",
                 )
             )
 
-        # 股價線
+        # 3. 疊加實際收盤價曲線 (粗紅線，最為醒目)
         fig.add_trace(
             go.Scatter(
                 x=df_pe["Date"],
                 y=df_pe["Close"],
                 mode="lines",
                 name=f"{target_ticker} 收盤價",
-                line=dict(color="#D32F2F", width=2.5),
+                line=dict(color="#D32F2F", width=3), # 使用深紅色、加粗
                 hovertemplate="<b>收盤價</b>: NT$%{y:.1f}<extra></extra>",
             )
         )
 
+        # 設定圖表版面
         fig.update_layout(
-            title=dict(text=f"{target_ticker} 本益比河流圖 ({period_option})", font=dict(size=18)),
+            title=dict(text=f"{target_ticker} 本益比河流圖 ({period_option}) - 彩虹版", font=dict(size=20)),
             xaxis_title="日期",
             yaxis_title="價格 (TWD)",
-            hovermode="x unified",
-            template="plotly_white",
-            height=620,
+            hovermode="x unified", # 游標移動時顯示該日期所有線段數值
+            template="plotly_white", # 使用白色背景主題
+            height=650,
+            margin=dict(l=10, r=10, t=60, b=10), # 調整邊距
             legend=dict(
-                orientation="h",
+                orientation="h", # 橫向排列圖例
                 yanchor="bottom",
                 y=1.02,
                 xanchor="right",
                 x=1,
+                font=dict(size=12),
             ),
+            # 針對 y 軸設定四捨五入顯示
+            yaxis=dict(tickformat=".1f"),
         )
 
-        col_chart, col_metric = st.columns([3, 1])
+        # 分欄顯示：圖表與右側數據指標
+        col_chart, col_metric = st.columns([3.5, 1])
 
         with col_chart:
-            st.plotly_chart(fig, use_container_width=True)
+            st.plotly_chart(fig, use_container_width=True, config={'displayModeBar': False}) # 隱藏 Plotly 工具列
 
         with col_metric:
-            latest = df_pe.iloc[-1]
-            current_pe = latest["Close"] / latest["TTM_EPS"] if latest["TTM_EPS"] > 0 else 0
+            # 獲取最新一筆資料
+            latest_data = df_pe.iloc[-1]
+            # 計算當前 P/E
+            if latest_data["TTM_EPS"] > 0:
+                current_pe_ratio = latest_data["Close"] / latest_data["TTM_EPS"]
+            else:
+                current_pe_ratio = 0
 
-            st.subheader("📌 最新估值數據")
+            st.subheader("📌 最新 Valuation")
             st.metric("標的代號", target_ticker)
-            st.metric("日期", pd.to_datetime(latest["Date"]).strftime("%Y-%m-%d"))
-            st.metric("當前股價", f"NT$ {latest['Close']:.1f}")
-            st.metric("近四季 TTM EPS", f"NT$ {latest['TTM_EPS']:.2f}")
-            st.metric(
-                "當前本益比 (PE)",
-                f"{current_pe:.2f} 倍" if current_pe > 0 else "N/A",
-                delta=f"基準最低帶 ({selected_pes[0]}x)",
-            )
+            st.metric("資料日期", pd.to_datetime(latest_data["Date"]).strftime("%Y-%m-%d"))
+            st.metric("當前股價", f"NT$ {latest_data['Close']:.1f}")
+            st.metric("TTM EPS (近四季)", f"NT$ {latest_data['TTM_EPS']:.2f}")
+            
+            # 動態判斷當前 PE 所在的彩虹區間顏色 (視覺化 Metric)
+            pe_color = "black"
+            if current_pe_ratio > 0:
+                if current_pe_ratio <= selected_pes[0]: pe_color = "purple"
+                elif current_pe_ratio >= selected_pes[-1]: pe_color = "red"
+                else: pe_color = "green" # 預設中間
 
-        with st.expander("查看原始數據明細"):
-            st.dataframe(df_pe.sort_values("Date", ascending=False), use_container_width=True)
+            st.markdown(f"當前本益比 (PE): <span style='color:{pe_color}; font-size:24px; font-weight:bold;'>{current_pe_ratio:.2f} 倍</span>", unsafe_allow_html=True)
+            
+            # 顯示相對位置
+            low_bound = selected_pes[0]
+            st.caption(f"選取範圍: {low_bound}x (紫) ~ {selected_pes[-1]}x (紅)")
+
+        # 原始資料明細
+        with st.expander("查看完整原始數據對齊明細"):
+            # 反序顯示 (最新的在上面)
+            st.dataframe(
+                df_pe.sort_values("Date", ascending=False).style.format({
+                    'Close': '{:.1f}', 'TTM_EPS': '{:.2f}', 
+                    **{f"{pe}x": '{:.1f}' for pe in selected_pes}
+                }), 
+                use_container_width=True
+            )
