@@ -910,105 +910,106 @@ with col_pe:
     # 2. 資料抓取與對齊函式
     @st.cache_data(ttl=3600)
     def fetch_pe_data_rainbow(symbol, period="5y"):
-        try:
-            ticker = yf.Ticker(symbol)
+    try:
+        ticker = yf.Ticker(symbol)
 
-            # 1. 抓取歷史股價
-            hist_df = ticker.history(period=period)
-            if hist_df.empty:
-                return pd.DataFrame()
-
-            hist_df = hist_df[["Close"]].copy()
-            hist_df.index = (
-                pd.to_datetime(hist_df.index).tz_localize(None).normalize()
-            )
-            hist_df = hist_df.sort_index()
-
-            # 2. 抓取季報財務資料
-            q_financials = ticker.quarterly_financials
-            if q_financials is None or q_financials.empty:
-                q_financials = ticker.quarterly_incomestmt
-
-            if q_financials is None or q_financials.empty:
-                return pd.DataFrame()
-
-            # 多重搜尋 EPS 相關欄位
-            eps_series = None
-            possible_eps_names = [
-                "Basic EPS",
-                "Diluted EPS",
-                "BasicEPS",
-                "DilutedEPS",
-                "Normalized EPS",
-                "Diluted NI Available to Com Stockholders",
-            ]
-
-            for candidate in possible_eps_names:
-                if candidate in q_financials.index:
-                    eps_series = q_financials.loc[candidate]
-                    break
-
-            if eps_series is None:
-                matching_indices = [
-                    idx
-                    for idx in q_financials.index
-                    if "EPS" in str(idx).upper()
-                ]
-                if matching_indices:
-                    eps_series = q_financials.loc[matching_indices[0]]
-
-            if eps_series is None:
-                return pd.DataFrame()
-
-            # 防護：確保 eps_series 為單維度 Series
-            if isinstance(eps_series, pd.DataFrame):
-                eps_series = eps_series.iloc[0]
-
-            eps_df = pd.DataFrame({"EPS": eps_series})
-            eps_df["EPS"] = pd.to_numeric(eps_df["EPS"], errors="coerce")
-            eps_df = eps_df.dropna()
-            eps_df.index = (
-                pd.to_datetime(eps_df.index).tz_localize(None).normalize()
-            )
-            eps_df = eps_df.sort_index(ascending=True)
-
-            # 計算 TTM EPS
-            eps_df["TTM_EPS"] = (
-                eps_df["EPS"].rolling(window=4, min_periods=1).sum()
-            )
-            eps_df = eps_df.dropna(subset=["TTM_EPS"])
-
-            if eps_df.empty:
-                return pd.DataFrame()
-
-            # 3. 重置索引並處理日期
-            hist_df = hist_df.reset_index().rename(
-                columns={"index": "Date", "Date": "Date"}
-            )
-            eps_df = eps_df.reset_index().rename(columns={"index": "Date"})
-
-            # 模擬財報發布日 (+45天)
-            eps_df["Date"] = eps_df["Date"] + pd.Timedelta(days=45)
-
-            # 時間精度對齊
-            hist_df["Date"] = hist_df["Date"].astype("datetime64[s]")
-            eps_df["Date"] = eps_df["Date"].astype("datetime64[s]")
-
-            # 進行 merge_asof 對齊
-            merged_df = pd.merge_asof(
-                hist_df.sort_values("Date"),
-                eps_df[["Date", "TTM_EPS"]].sort_values("Date"),
-                on="Date",
-                direction="backward",
-            )
-
-            merged_df = merged_df.dropna(subset=["TTM_EPS", "Close"]).copy()
-            return merged_df
-
-        except Exception as e:
-            st.error(f"解析 {symbol} 資料時發生錯誤: {e}")
+        # 1. 抓取歷史股價
+        hist_df = ticker.history(period=period)
+        if hist_df.empty:
             return pd.DataFrame()
 
+        hist_df = hist_df[["Close"]].copy()
+        hist_df.index = (
+            pd.to_datetime(hist_df.index).tz_localize(None).normalize()
+        )
+        hist_df = hist_df.sort_index()
+
+        # 2. 抓取季報財務資料
+        q_financials = ticker.quarterly_financials
+        if q_financials is None or q_financials.empty:
+            q_financials = ticker.quarterly_incomestmt
+
+        if q_financials is None or q_financials.empty:
+            return pd.DataFrame()
+
+        # 精準尋找單季 EPS 欄位
+        eps_series = None
+        possible_eps_names = [
+            "Basic EPS",
+            "Diluted EPS",
+            "BasicEPS",
+            "DilutedEPS",
+        ]
+
+        for candidate in possible_eps_names:
+            if candidate in q_financials.index:
+                eps_series = q_financials.loc[candidate]
+                break
+
+        if eps_series is None:
+            # 備用機制：關鍵字匹配
+            for idx in q_financials.index:
+                if "EPS" in str(idx).upper() and "NET" not in str(idx).upper():
+                    eps_series = q_financials.loc[idx]
+                    break
+
+        if eps_series is None:
+            return pd.DataFrame()
+
+        if isinstance(eps_series, pd.DataFrame):
+            eps_series = eps_series.iloc[0]
+
+        # 整理單季 EPS 資料
+        eps_df = pd.DataFrame({"EPS": eps_series})
+        eps_df["EPS"] = pd.to_numeric(eps_df["EPS"], errors="coerce")
+        eps_df = eps_df.dropna()
+
+        # 防呆機制：台股單季 EPS 通常不超過 200，若數字 > 300 可能是抓到「淨利(千元)」，自動除以 1000 或拿掉
+        if (eps_df["EPS"].abs() > 300).any():
+            eps_df["EPS"] = eps_df["EPS"] / 1000.0  # 嘗試修正單位
+
+        eps_df.index = (
+            pd.to_datetime(eps_df.index).tz_localize(None).normalize()
+        )
+
+        # ⚠️【關鍵修正】先依照時間由舊到新排序 (Ascending)，滾動加總才不會算反！
+        eps_df = eps_df.sort_index(ascending=True)
+
+        # ⚠️【關鍵修正】計算近 4 季 Rolling Sum (必須湊齊 4 季才計算 TTM)
+        eps_df["TTM_EPS"] = (
+            eps_df["EPS"].rolling(window=4, min_periods=4).sum()
+        )
+        eps_df = eps_df.dropna(subset=["TTM_EPS"])
+
+        if eps_df.empty:
+            return pd.DataFrame()
+
+        # 3. 台股財報生效日推算 (加上 45~75 天發布延遲)
+        eps_df = eps_df.reset_index().rename(columns={"index": "Date"})
+        eps_df["Date"] = eps_df["Date"] + pd.Timedelta(days=60)
+
+        # 4. 與股價對齊
+        hist_df = hist_df.reset_index().rename(
+            columns={"index": "Date", "Date": "Date"}
+        )
+
+        hist_df["Date"] = hist_df["Date"].astype("datetime64[s]")
+        eps_df["Date"] = eps_df["Date"].astype("datetime64[s]")
+
+        # 進行 backward merge
+        merged_df = pd.merge_asof(
+            hist_df.sort_values("Date"),
+            eps_df[["Date", "TTM_EPS"]].sort_values("Date"),
+            on="Date",
+            direction="backward",
+        )
+
+        merged_df = merged_df.dropna(subset=["TTM_EPS", "Close"]).copy()
+        return merged_df
+
+    except Exception as e:
+        st.error(f"解析 {symbol} 資料時發生錯誤: {e}")
+        return pd.DataFrame()
     # 3. 讀取資料與套用 override_eps
     with st.spinner(
         f"正在讀取 {target_ticker} 歷史價格與財務數據 (彩虹版)..."
