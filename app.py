@@ -845,10 +845,6 @@ with tab7:
     st.header("本益比河流圖 (上市/上櫃) - 彩虹色調")
     st.caption("資料來源：yfinance (自動進行 TTM EPS 與每日股價對齊)")
 
-# 在計算區間時：
-if override_eps > 0:
-    latest_eps = override_eps
-    # 將整條歷史 TTM_EPS 換成最新輸入值，或是繪圖時僅採用該最新 EPS 算出的階梯
     # 1. 股票代號與控制參數設定區
     col_sym, col_market, col_period = st.columns([2, 1, 2])
 
@@ -869,32 +865,45 @@ if override_eps > 0:
 
     target_ticker = f"{stock_code}{market_suffix}" if stock_code else "2330.TW"
 
-    default_pe_ranges = [10, 12, 16, 20, 24, 28, 32]
-    selected_pes = st.multiselect(
-        "選擇本益比倍數區間",
-        options=[
-            8,
-            10,
-            12,
-            15,
-            18,
-            20,
-            22,
-            24,
-            25,
-            26,
-            28,
-            30,
-            32,
-            35,
-            40,
-            50,
-        ],
-        default=default_pe_ranges,
-    )
-    selected_pes = sorted(selected_pes)
+    # 手動校正輸入框（移至資料處理前）
+    col_pe, col_eps = st.columns([3, 2])
 
-    # 2. 資料抓取與對齊函式 (修正 datetime 精度問題)
+    with col_pe:
+        default_pe_ranges = [10, 12, 16, 20, 24, 28, 32]
+        selected_pes = st.multiselect(
+            "選擇本益比倍數區間",
+            options=[
+                8,
+                10,
+                12,
+                15,
+                18,
+                20,
+                22,
+                24,
+                25,
+                26,
+                28,
+                30,
+                32,
+                35,
+                40,
+                50,
+            ],
+            default=default_pe_ranges,
+        )
+        selected_pes = sorted(selected_pes)
+
+    with col_eps:
+        override_eps = st.number_input(
+            "手動校正最新 TTM EPS ( > 0 優先採用)",
+            value=0.0,
+            step=0.5,
+            format="%.2f",
+            help="yfinance 季報常有延遲，若已知最新 TTM EPS，可在此手動輸入校正。",
+        )
+
+    # 2. 資料抓取與對齊函式
     @st.cache_data(ttl=3600)
     def fetch_pe_data_rainbow(symbol, period="5y"):
         try:
@@ -947,7 +956,7 @@ if override_eps > 0:
             if eps_series is None:
                 return pd.DataFrame()
 
-            # 🛡️ 最小防護：確保 eps_series 為單維度 Series (避免多維 DataFrame 導致 to_numeric 崩潰)
+            # 防護：確保 eps_series 為單維度 Series
             if isinstance(eps_series, pd.DataFrame):
                 eps_series = eps_series.iloc[0]
 
@@ -959,7 +968,7 @@ if override_eps > 0:
             )
             eps_df = eps_df.sort_index(ascending=True)
 
-            # 計算 TTM EPS (保持您原本的 min_periods=1 彈性)
+            # 計算 TTM EPS
             eps_df["TTM_EPS"] = (
                 eps_df["EPS"].rolling(window=4, min_periods=1).sum()
             )
@@ -974,10 +983,10 @@ if override_eps > 0:
             )
             eps_df = eps_df.reset_index().rename(columns={"index": "Date"})
 
-            # 粗略模擬財報發布日 (+45天)
+            # 模擬財報發布日 (+45天)
             eps_df["Date"] = eps_df["Date"] + pd.Timedelta(days=45)
 
-            # 🌟【核心修復點】：將雙方的 Date 強制轉為相同的 datetime64[s] 精度
+            # 時間精度對齊
             hist_df["Date"] = hist_df["Date"].astype("datetime64[s]")
             eps_df["Date"] = eps_df["Date"].astype("datetime64[s]")
 
@@ -996,7 +1005,7 @@ if override_eps > 0:
             st.error(f"解析 {symbol} 資料時發生錯誤: {e}")
             return pd.DataFrame()
 
-    # 3. 讀取資料與圖表渲染
+    # 3. 讀取資料與套用 override_eps
     with st.spinner(
         f"正在讀取 {target_ticker} 歷史價格與財務數據 (彩虹版)..."
     ):
@@ -1009,12 +1018,28 @@ if override_eps > 0:
             f"⚠️ 無法取得 {target_ticker} 資料，或請至少選擇 2 個以上的本益比倍數！"
         )
     else:
+        df_pe = df_pe.copy()
+
+        # 🌟【套用手動覆寫邏輯】：若有輸入 override_eps，將最新一期的 TTM EPS 替換
+        if override_eps > 0:
+            # 找到最新的 EPS 區段（即最後一個季報生效日之後的所有交易日）
+            last_valid_date = df_pe["Date"].max()
+            # 將最後 90 天（約一季）或當前最新生效的 TTM_EPS 替換為校正值
+            df_pe.iloc[-1, df_pe.columns.get_loc("TTM_EPS")] = override_eps
+
+            # 若希望將當前最新季度的全區間都更新，可採用下方邏輯：
+            latest_ttm_original = df_pe["TTM_EPS"].iloc[-1]
+            df_pe.loc[
+                df_pe["TTM_EPS"] == latest_ttm_original, "TTM_EPS"
+            ] = override_eps
+
+        # 計算各 PE 河流線條
         for pe in selected_pes:
             df_pe[f"{pe}x"] = df_pe["TTM_EPS"] * pe
 
+        # 4. 繪製圖表
         fig = go.Figure()
 
-        # 彩虹顏色 (紫、藍、綠、黃、橙、紅) - 完全還原原本顏色設定
         rainbow_colors = [
             "rgba(148, 0, 211, 0.35)",  # 紫
             "rgba(0, 0, 255, 0.35)",  # 藍
@@ -1024,7 +1049,6 @@ if override_eps > 0:
             "rgba(255, 0, 0, 0.35)",  # 紅
         ]
 
-        # 最低 PE 基準線
         lowest_pe = selected_pes[0]
         fig.add_trace(
             go.Scatter(
@@ -1037,7 +1061,6 @@ if override_eps > 0:
             )
         )
 
-        # 彩虹河流填滿
         num_intervals = len(selected_pes) - 1
         for i in range(num_intervals):
             low_pe_val = selected_pes[i]
@@ -1059,7 +1082,7 @@ if override_eps > 0:
                 )
             )
 
-        # 實體股價線 - 完全還原原本紅色顯眼樣式
+        # 股價實體線
         fig.add_trace(
             go.Scatter(
                 x=df_pe["Date"],
@@ -1116,9 +1139,11 @@ if override_eps > 0:
                 pd.to_datetime(latest_data["Date"]).strftime("%Y-%m-%d"),
             )
             st.metric("當前股價", f"NT$ {latest_data['Close']:.1f}")
-            st.metric(
-                "TTM EPS (近四季)", f"NT$ {latest_data['TTM_EPS']:.2f}"
-            )
+
+            eps_label = "TTM EPS (近四季)"
+            if override_eps > 0:
+                eps_label += " ✏️(已校正)"
+            st.metric(eps_label, f"NT$ {latest_data['TTM_EPS']:.2f}")
 
             pe_color = "black"
             if current_pe_ratio > 0:
@@ -1146,10 +1171,3 @@ if override_eps > 0:
                 }),
                 use_container_width=True,
             )
-# 在 sidebar 或控制區加上校正輸入框
-override_eps = st.number_input(
-    "手動校正最新 TTM EPS (若輸入 > 0 則優先採用)",
-    value=0.0,
-    step=0.5,
-    format="%.2f",
-)
