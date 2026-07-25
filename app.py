@@ -923,41 +923,54 @@ with tab7:
             )
             hist_df = hist_df.sort_index()
 
-            # 2. 抓取季報並計算近四季累積 EPS (TTM EPS)
+            # B. 抓取季報並計算近四季累積 EPS (TTM EPS)
             q_financials = ticker.quarterly_financials
-            if (
-                q_financials.empty
-                or "Basic EPS" not in q_financials.index
-                and "Diluted EPS" not in q_financials.index
-            ):
-              # 若無獨立 EPS 欄位，嘗試從 Net Income 估算或使用備用名稱
-              eps_row = (
-                  q_financials.loc["Basic EPS"]
-                  if "Basic EPS" in q_financials.index
-                  else q_financials.loc["Diluted EPS"]
-              )
-            else:
-              eps_row = q_financials.loc["Basic EPS"]
-        
+            if q_financials.empty:
+                return pd.DataFrame()
+
+            # 安全判斷 EPS 欄位
+            eps_row = None
+            for eps_name in [
+                "Basic EPS",
+                "Diluted EPS",
+                "BasicEPS",
+                "DilutedEPS",
+            ]:
+                if eps_name in q_financials.index:
+                    eps_row = q_financials.loc[eps_name]
+                    break
+
+            if eps_row is None:
+                return pd.DataFrame()
+
             # 整理季報 EPS 時間序列 (由舊到新排序)
-            eps_df = pd.DataFrame({"EPS": eps_row}).sort_index()
+            eps_df = (
+                pd.DataFrame({"EPS": eps_row}).dropna().astype(float).sort_index()
+            )
             eps_df.index = pd.to_datetime(eps_df.index).tz_localize(None)
-        
+
             # 計算滾動近 4 季 EPS 之和 (Rolling TTM)
             eps_df["TTM_EPS"] = eps_df["EPS"].rolling(window=4).sum()
-        
-            # 3. 將每日股價與季報 TTM EPS 進行合併，並向前填補 (ffill)
+
+            # C. 將每日股價與季報 TTM EPS 進行合併，並向前填補 (ffill)
             merged_df = pd.merge(
-                hist_df, eps_df[["TTM_EPS"]], left_index=True, right_index=True, how="left"
+                hist_df,
+                eps_df[["TTM_EPS"]],
+                left_index=True,
+                right_index=True,
+                how="left",
             )
             merged_df["TTM_EPS"] = merged_df["TTM_EPS"].ffill()
-        
+
             # 剔除尚未累積滿 4 季 TTM EPS 的早期空值
             merged_df = merged_df.dropna(subset=["TTM_EPS", "Close"])
             merged_df.reset_index(inplace=True)
             merged_df.rename(columns={"index": "Date"}, inplace=True)
-        
+
             return merged_df
+        except Exception as e:
+            st.error(f"資料抓取失敗: {e}")
+            return pd.DataFrame()
 
     # 3. 讀取資料與套用 override_eps
     with st.spinner(
@@ -974,12 +987,14 @@ with tab7:
     else:
         df_pe = df_pe.copy()
 
-        # 🌟【手動覆寫邏輯】：若輸入校正值，將最新一期的 TTM EPS 全面替換
+        # 🌟【修正後的手動覆寫邏輯】：精確替換最後一段（最新一季）的 TTM EPS
         if override_eps > 0:
             latest_ttm_original = df_pe["TTM_EPS"].iloc[-1]
-            df_pe.loc[
-                df_pe["TTM_EPS"] == latest_ttm_original, "TTM_EPS"
-            ] = override_eps
+            # 找到最後連續等於最新原始 TTM 的 index 進行安全替換，避免誤傷歷史同數值的區間
+            last_segment_mask = (
+                df_pe["TTM_EPS"] == latest_ttm_original
+            ) & (df_pe.index >= df_pe[df_pe["TTM_EPS"] == latest_ttm_original].index.max() - 120)
+            df_pe.loc[last_segment_mask, "TTM_EPS"] = override_eps
 
         # 計算各 PE 河流線條
         for pe in selected_pes:
@@ -989,14 +1004,15 @@ with tab7:
         fig = go.Figure()
 
         rainbow_colors = [
-            "rgba(148, 0, 211, 0.35)",  # 紫
-            "rgba(0, 0, 255, 0.35)",  # 藍
-            "rgba(0, 255, 0, 0.35)",  # 綠
-            "rgba(255, 255, 0, 0.35)",  # 黃
-            "rgba(255, 165, 0, 0.35)",  # 橙
-            "rgba(255, 0, 0, 0.35)",  # 紅
+            "rgba(148, 0, 211, 0.25)",  # 紫
+            "rgba(0, 0, 255, 0.25)",  # 藍
+            "rgba(0, 255, 0, 0.25)",  # 綠
+            "rgba(255, 255, 0, 0.25)",  # 黃
+            "rgba(255, 165, 0, 0.25)",  # 橙
+            "rgba(255, 0, 0, 0.25)",  # 紅
         ]
 
+        # 繪製最低本益比基底線
         lowest_pe = selected_pes[0]
         fig.add_trace(
             go.Scatter(
@@ -1009,6 +1025,7 @@ with tab7:
             )
         )
 
+        # 填滿本益比彩虹區間
         num_intervals = len(selected_pes) - 1
         for i in range(num_intervals):
             low_pe_val = selected_pes[i]
@@ -1026,9 +1043,35 @@ with tab7:
                     fill="tonexty",
                     fillcolor=current_fill_color,
                     name=f"{low_pe_val}x - {high_pe_val}x PE",
-                    hovertemplate=f"<b>{low_pe_val}x - {high_pe_val}x 區間</b><br>價格: %{{y:.1f}} TWD<extra></extra>",
+                    hovertemplate=f"<b>{low_pe_val}x - {high_pe_val}x 區間</b><br>上限價: %{{y:.1f}} TWD<extra></extra>",
                 )
             )
+
+        # 🌟【補上】：實際收盤價（Close）折線，置於最上層
+        fig.add_trace(
+            go.Scatter(
+                x=df_pe["Date"],
+                y=df_pe["Close"],
+                mode="lines",
+                name="收盤價",
+                line=dict(color="black", width=2),
+                hovertemplate="<b>日期</b>: %{x|%Y-%m-%d}<br><b>收盤價</b>: %{y:.2f} TWD<extra></extra>",
+            )
+        )
+
+        # 圖表樣式設定
+        fig.update_layout(
+            title=f"{target_ticker} 本益比河流圖",
+            xaxis_title="日期",
+            yaxis_title="價格 (TWD)",
+            hovermode="x unified",
+            legend=dict(
+                orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1
+            ),
+            margin=dict(l=20, r=20, t=60, b=20),
+        )
+
+        st.plotly_chart(fig, use_container_width=True)
 
         # 股價實體線
         fig.add_trace(
