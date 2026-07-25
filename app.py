@@ -840,7 +840,7 @@ with tab6:
                 st.error("無法抓取資料，請確認該頁面表格結構是否變更。")
 
 
-# --- TAB 7: 通用台股本益比河流圖 (彩虹版 - 修正時間精度 Bug) ---
+# --- TAB 7: 通用台股本益比河流圖 (彩虹版 - 修正時間精度與 TTM 邏輯 Bug) ---
 with tab7:
     st.header("本益比河流圖 (上市/上櫃) - 彩虹色調")
     st.caption("資料來源：yfinance (自動進行 TTM EPS 與每日股價對齊)")
@@ -865,38 +865,37 @@ with tab7:
 
     target_ticker = f"{stock_code}{market_suffix}" if stock_code else "2330.TW"
 
-    # 手動校正輸入框（移至資料處理前）
+    # 控制選項與輸入框
     col_pe, col_eps = st.columns([3, 2])
 
-with col_pe:
-    # 確保 default 裡面的數值 (8, 12, 16, 20, 24, 28, 32) 全部都存在於 options 中
-    available_options = [
-        6,
-        8,
-        10,
-        12,
-        14,
-        16,
-        18,
-        20,
-        22,
-        24,
-        26,
-        28,
-        30,
-        32,
-        35,
-        40,
-        50,
-    ]
-    default_pe_ranges = [10, 12, 16, 20, 24, 28, 32]
+    with col_pe:
+        available_options = [
+            6,
+            8,
+            10,
+            12,
+            14,
+            16,
+            18,
+            20,
+            22,
+            24,
+            26,
+            28,
+            30,
+            32,
+            35,
+            40,
+            50,
+        ]
+        default_pe_ranges = [10, 12, 16, 20, 24, 28, 32]
 
-    selected_pes = st.multiselect(
-        "選擇本益比倍數區間",
-        options=available_options,
-        default=default_pe_ranges,
-    )
-    selected_pes = sorted(selected_pes)
+        selected_pes = st.multiselect(
+            "選擇本益比倍數區間",
+            options=available_options,
+            default=default_pe_ranges,
+        )
+        selected_pes = sorted(selected_pes)
 
     with col_eps:
         override_eps = st.number_input(
@@ -904,7 +903,7 @@ with col_pe:
             value=0.0,
             step=0.5,
             format="%.2f",
-            help="yfinance 季報常有延遲，若已知最新 TTM EPS，可在此手動輸入校正。",
+            help="yfinance 季報常有延遲或數據誤差，若已知最新 TTM EPS，可在此手動輸入校正。",
         )
 
     # 2. 資料抓取與對齊函式
@@ -912,27 +911,27 @@ with col_pe:
     def fetch_pe_data_rainbow(symbol, period="5y"):
         try:
             ticker = yf.Ticker(symbol)
-    
-            # 1. 抓取歷史股價
+
+            # A. 抓取歷史股價
             hist_df = ticker.history(period=period)
             if hist_df.empty:
                 return pd.DataFrame()
-    
+
             hist_df = hist_df[["Close"]].copy()
             hist_df.index = (
                 pd.to_datetime(hist_df.index).tz_localize(None).normalize()
             )
             hist_df = hist_df.sort_index()
-    
-            # 2. 抓取季報財務資料
+
+            # B. 抓取季報財務資料
             q_financials = ticker.quarterly_financials
             if q_financials is None or q_financials.empty:
                 q_financials = ticker.quarterly_incomestmt
-    
+
             if q_financials is None or q_financials.empty:
                 return pd.DataFrame()
-    
-            # 精準尋找單季 EPS 欄位
+
+            # 精準尋找「單季 EPS」欄位
             eps_series = None
             possible_eps_names = [
                 "Basic EPS",
@@ -940,76 +939,79 @@ with col_pe:
                 "BasicEPS",
                 "DilutedEPS",
             ]
-    
+
             for candidate in possible_eps_names:
                 if candidate in q_financials.index:
                     eps_series = q_financials.loc[candidate]
                     break
-    
+
             if eps_series is None:
-                # 備用機制：關鍵字匹配
                 for idx in q_financials.index:
-                    if "EPS" in str(idx).upper() and "NET" not in str(idx).upper():
+                    idx_str = str(idx).upper()
+                    if (
+                        "EPS" in idx_str
+                        and "NET" not in idx_str
+                        and "CONTINUING" not in idx_str
+                    ):
                         eps_series = q_financials.loc[idx]
                         break
-    
+
             if eps_series is None:
                 return pd.DataFrame()
-    
+
             if isinstance(eps_series, pd.DataFrame):
                 eps_series = eps_series.iloc[0]
-    
-            # 整理單季 EPS 資料
+
+            # 清理 EPS 資料
             eps_df = pd.DataFrame({"EPS": eps_series})
             eps_df["EPS"] = pd.to_numeric(eps_df["EPS"], errors="coerce")
             eps_df = eps_df.dropna()
-    
-            # 防呆機制：台股單季 EPS 通常不超過 200，若數字 > 300 可能是抓到「淨利(千元)」，自動除以 1000 或拿掉
+
+            # 排除非合理的數據（如誤抓千元單位淨利）
             if (eps_df["EPS"].abs() > 300).any():
-                eps_df["EPS"] = eps_df["EPS"] / 1000.0  # 嘗試修正單位
-    
+                eps_df["EPS"] = eps_df["EPS"] / 1000.0
+
             eps_df.index = (
                 pd.to_datetime(eps_df.index).tz_localize(None).normalize()
             )
-    
-            # ⚠️【關鍵修正】先依照時間由舊到新排序 (Ascending)，滾動加總才不會算反！
+
+            # 關鍵：強制由舊到新排序 (Ascending)，計算 Rolling 才不會出錯
             eps_df = eps_df.sort_index(ascending=True)
-    
-            # ⚠️【關鍵修正】計算近 4 季 Rolling Sum (必須湊齊 4 季才計算 TTM)
+
+            # 計算 TTM EPS (近四季滾動相加，需湊滿 4 季)
             eps_df["TTM_EPS"] = (
                 eps_df["EPS"].rolling(window=4, min_periods=4).sum()
             )
             eps_df = eps_df.dropna(subset=["TTM_EPS"])
-    
+
             if eps_df.empty:
                 return pd.DataFrame()
 
-        # 3. 台股財報生效日推算 (加上 45~75 天發布延遲)
-        eps_df = eps_df.reset_index().rename(columns={"index": "Date"})
-        eps_df["Date"] = eps_df["Date"] + pd.Timedelta(days=60)
+            # C. 計算財報生效日 (季報底日 + 60 天估算公告日)
+            eps_df = eps_df.reset_index().rename(columns={"index": "Date"})
+            eps_df["Date"] = eps_df["Date"] + pd.Timedelta(days=60)
+            eps_df = eps_df.drop_duplicates(subset=["Date"], keep="last")
 
-        # 4. 與股價對齊
-        hist_df = hist_df.reset_index().rename(
-            columns={"index": "Date", "Date": "Date"}
-        )
+            # D. 與股價進行 merge_asof 對齊
+            hist_df = hist_df.reset_index().rename(columns={"index": "Date"})
 
-        hist_df["Date"] = hist_df["Date"].astype("datetime64[s]")
-        eps_df["Date"] = eps_df["Date"].astype("datetime64[s]")
+            hist_df["Date"] = hist_df["Date"].astype("datetime64[s]")
+            eps_df["Date"] = eps_df["Date"].astype("datetime64[s]")
 
-        # 進行 backward merge
-        merged_df = pd.merge_asof(
-            hist_df.sort_values("Date"),
-            eps_df[["Date", "TTM_EPS"]].sort_values("Date"),
-            on="Date",
-            direction="backward",
-        )
+            merged_df = pd.merge_asof(
+                hist_df.sort_values("Date"),
+                eps_df[["Date", "TTM_EPS"]].sort_values("Date"),
+                on="Date",
+                direction="backward",
+            )
 
-        merged_df = merged_df.dropna(subset=["TTM_EPS", "Close"]).copy()
-        return merged_df
+            merged_df = merged_df.dropna(subset=["TTM_EPS", "Close"]).copy()
+            return merged_df
 
-    except Exception as e:
-        st.error(f"解析 {symbol} 資料時發生錯誤: {e}")
-        return pd.DataFrame()
+        except Exception as e:
+            st.error(f"解析 {symbol} 資料時發生錯誤: {e}")
+            return pd.DataFrame()
+
     # 3. 讀取資料與套用 override_eps
     with st.spinner(
         f"正在讀取 {target_ticker} 歷史價格與財務數據 (彩虹版)..."
@@ -1025,14 +1027,8 @@ with col_pe:
     else:
         df_pe = df_pe.copy()
 
-        # 🌟【套用手動覆寫邏輯】：若有輸入 override_eps，將最新一期的 TTM EPS 替換
+        # 🌟【手動覆寫邏輯】：若輸入校正值，將最新一期的 TTM EPS 全面替換
         if override_eps > 0:
-            # 找到最新的 EPS 區段（即最後一個季報生效日之後的所有交易日）
-            last_valid_date = df_pe["Date"].max()
-            # 將最後 90 天（約一季）或當前最新生效的 TTM_EPS 替換為校正值
-            df_pe.iloc[-1, df_pe.columns.get_loc("TTM_EPS")] = override_eps
-
-            # 若希望將當前最新季度的全區間都更新，可採用下方邏輯：
             latest_ttm_original = df_pe["TTM_EPS"].iloc[-1]
             df_pe.loc[
                 df_pe["TTM_EPS"] == latest_ttm_original, "TTM_EPS"
