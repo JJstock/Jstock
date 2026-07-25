@@ -923,94 +923,41 @@ with tab7:
             )
             hist_df = hist_df.sort_index()
 
-            # B. 抓取季報財務資料
+            # 2. 抓取季報並計算近四季累積 EPS (TTM EPS)
             q_financials = ticker.quarterly_financials
-            if q_financials is None or q_financials.empty:
-                q_financials = ticker.quarterly_incomestmt
-
-            if q_financials is None or q_financials.empty:
-                return pd.DataFrame()
-
-            # 精準尋找「單季 EPS」欄位
-            eps_series = None
-            possible_eps_names = [
-                "Basic EPS",
-                "Diluted EPS",
-                "BasicEPS",
-                "DilutedEPS",
-            ]
-
-            for candidate in possible_eps_names:
-                if candidate in q_financials.index:
-                    eps_series = q_financials.loc[candidate]
-                    break
-
-            if eps_series is None:
-                for idx in q_financials.index:
-                    idx_str = str(idx).upper()
-                    if (
-                        "EPS" in idx_str
-                        and "NET" not in idx_str
-                        and "CONTINUING" not in idx_str
-                    ):
-                        eps_series = q_financials.loc[idx]
-                        break
-
-            if eps_series is None:
-                return pd.DataFrame()
-
-            if isinstance(eps_series, pd.DataFrame):
-                eps_series = eps_series.iloc[0]
-
-            # 清理 EPS 資料
-            eps_df = pd.DataFrame({"EPS": eps_series})
-            eps_df["EPS"] = pd.to_numeric(eps_df["EPS"], errors="coerce")
-            eps_df = eps_df.dropna()
-
-            # 排除非合理的數據（如誤抓千元單位淨利）
-            if (eps_df["EPS"].abs() > 300).any():
-                eps_df["EPS"] = eps_df["EPS"] / 1000.0
-
-            eps_df.index = (
-                pd.to_datetime(eps_df.index).tz_localize(None).normalize()
+            if (
+                q_financials.empty
+                or "Basic EPS" not in q_financials.index
+                and "Diluted EPS" not in q_financials.index
+            ):
+              # 若無獨立 EPS 欄位，嘗試從 Net Income 估算或使用備用名稱
+              eps_row = (
+                  q_financials.loc["Basic EPS"]
+                  if "Basic EPS" in q_financials.index
+                  else q_financials.loc["Diluted EPS"]
+              )
+            else:
+              eps_row = q_financials.loc["Basic EPS"]
+        
+            # 整理季報 EPS 時間序列 (由舊到新排序)
+            eps_df = pd.DataFrame({"EPS": eps_row}).sort_index()
+            eps_df.index = pd.to_datetime(eps_df.index).tz_localize(None)
+        
+            # 計算滾動近 4 季 EPS 之和 (Rolling TTM)
+            eps_df["TTM_EPS"] = eps_df["EPS"].rolling(window=4).sum()
+        
+            # 3. 將每日股價與季報 TTM EPS 進行合併，並向前填補 (ffill)
+            merged_df = pd.merge(
+                hist_df, eps_df[["TTM_EPS"]], left_index=True, right_index=True, how="left"
             )
-
-            # 關鍵：強制由舊到新排序 (Ascending)，計算 Rolling 才不會出錯
-            eps_df = eps_df.sort_index(ascending=True)
-
-            # 計算 TTM EPS (近四季滾動相加，需湊滿 4 季)
-            eps_df["TTM_EPS"] = (
-                eps_df["EPS"].rolling(window=4, min_periods=4).sum()
-            )
-            eps_df = eps_df.dropna(subset=["TTM_EPS"])
-
-            if eps_df.empty:
-                return pd.DataFrame()
-
-            # C. 計算財報生效日 (季報底日 + 60 天估算公告日)
-            eps_df = eps_df.reset_index().rename(columns={"index": "Date"})
-            eps_df["Date"] = eps_df["Date"] + pd.Timedelta(days=60)
-            eps_df = eps_df.drop_duplicates(subset=["Date"], keep="last")
-
-            # D. 與股價進行 merge_asof 對齊
-            hist_df = hist_df.reset_index().rename(columns={"index": "Date"})
-
-            hist_df["Date"] = hist_df["Date"].astype("datetime64[s]")
-            eps_df["Date"] = eps_df["Date"].astype("datetime64[s]")
-
-            merged_df = pd.merge_asof(
-                hist_df.sort_values("Date"),
-                eps_df[["Date", "TTM_EPS"]].sort_values("Date"),
-                on="Date",
-                direction="backward",
-            )
-
-            merged_df = merged_df.dropna(subset=["TTM_EPS", "Close"]).copy()
+            merged_df["TTM_EPS"] = merged_df["TTM_EPS"].ffill()
+        
+            # 剔除尚未累積滿 4 季 TTM EPS 的早期空值
+            merged_df = merged_df.dropna(subset=["TTM_EPS", "Close"])
+            merged_df.reset_index(inplace=True)
+            merged_df.rename(columns={"index": "Date"}, inplace=True)
+        
             return merged_df
-
-        except Exception as e:
-            st.error(f"解析 {symbol} 資料時發生錯誤: {e}")
-            return pd.DataFrame()
 
     # 3. 讀取資料與套用 override_eps
     with st.spinner(
