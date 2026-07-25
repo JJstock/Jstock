@@ -868,31 +868,35 @@ with tab7:
     # 手動校正輸入框（移至資料處理前）
     col_pe, col_eps = st.columns([3, 2])
 
-    with col_pe:
-        default_pe_ranges = [10, 12, 16, 20, 24, 28, 32]
-        selected_pes = st.multiselect(
-            "選擇本益比倍數區間",
-            options=[
-                8,
-                10,
-                12,
-                15,
-                18,
-                20,
-                22,
-                24,
-                25,
-                26,
-                28,
-                30,
-                32,
-                35,
-                40,
-                50,
-            ],
-            default=default_pe_ranges,
-        )
-        selected_pes = sorted(selected_pes)
+with col_pe:
+    # 確保 default 裡面的數值 (8, 12, 16, 20, 24, 28, 32) 全部都存在於 options 中
+    available_options = [
+        6,
+        8,
+        10,
+        12,
+        14,
+        16,
+        18,
+        20,
+        22,
+        24,
+        26,
+        28,
+        30,
+        32,
+        35,
+        40,
+        50,
+    ]
+    default_pe_ranges = [10, 12, 16, 20, 24, 28, 32]
+
+    selected_pes = st.multiselect(
+        "選擇本益比倍數區間",
+        options=available_options,
+        default=default_pe_ranges,
+    )
+    selected_pes = sorted(selected_pes)
 
     with col_eps:
         override_eps = st.number_input(
