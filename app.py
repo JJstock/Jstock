@@ -840,48 +840,57 @@ with tab6:
                 st.error("無法抓取資料，請確認該頁面表格結構是否變更。")
 
 
-# --- TAB 7: 台積電本益比河流圖 ---
+# --- TAB 7: 通用台股本益比河流圖 ---
 with tab7:
-    st.header("🇹🇼 台積電 (2330.TW) 本益比河流圖")
+    st.header("本益比河流圖 (上市/上櫃)")
     st.caption("資料來源：yfinance (自動進行 TTM EPS 與每日股價對齊)")
 
-    col_ctrl1, col_ctrl2 = st.columns([1, 2])
+    # 1. 股票代號與控制參數設定區
+    col_sym, col_market, col_period = st.columns([2, 1, 2])
 
-    with col_ctrl1:
+    with col_sym:
+        stock_code = st.text_input("輸入股票代號", value="2330").strip()
+
+    with col_market:
+        market_suffix = st.selectbox("市場類別", options=[".TW", ".TWO"], index=0)
+
+    with col_period:
         period_option = st.selectbox(
-            "選擇歷史時間範圍",
+            "歷史時間範圍",
             options=["1y", "2y", "3y", "5y", "max"],
             index=3,
         )
 
-    with col_ctrl2:
-        selected_pes = st.multiselect(
-            "選擇本益比倍數區間",
-            options=[10, 12, 15, 18, 20, 22, 25, 28, 30, 35],
-            default=[12, 15, 18, 22, 25],
-        )
-        selected_pes = sorted(selected_pes)
+    # 組合完整的 yfinance ticker 名稱 (例如: 2330.TW 或 6547.TWO)
+    target_ticker = f"{stock_code}{market_suffix}" if stock_code else "2330.TW"
 
+    selected_pes = st.multiselect(
+        "選擇本益比倍數區間",
+        options=[10, 12, 15, 18, 20, 22, 25, 28, 30, 35, 40, 50],
+        default=[12, 15, 18, 22, 25],
+    )
+    selected_pes = sorted(selected_pes)
+
+    # 2. 資料抓取函式 (支援動態傳入 symbol)
     @st.cache_data(ttl=3600)
-    def fetch_tsmc_pe_data(period="5y"):
+    def fetch_pe_data(symbol, period="5y"):
         try:
-            ticker = yf.Ticker("2330.TW")
+            ticker = yf.Ticker(symbol)
 
-            # 1. 抓取歷史股價
+            # 抓取歷史股價
             hist_df = ticker.history(period=period)
             if hist_df.empty:
                 return pd.DataFrame()
 
             hist_df = hist_df[["Close"]].copy()
-            # 移除時區並統一天數規格
             hist_df.index = pd.to_datetime(hist_df.index).tz_localize(None).normalize()
 
-            # 2. 抓取季報財務資料
+            # 抓取季報財務資料
             q_financials = ticker.quarterly_financials
             if q_financials is None or q_financials.empty:
                 return pd.DataFrame()
 
-            # 廣義搜尋 EPS 相關欄位名
+            # 廣義搜尋 EPS 相關欄位
             eps_row = None
             possible_eps_names = [
                 "Basic EPS", "Diluted EPS", "BasicEPS", "DilutedEPS", 
@@ -893,7 +902,6 @@ with tab7:
                     break
 
             if eps_row is None:
-                # 備用方案：若完全找不到名稱，嘗試搜尋帶有 EPS 字樣的 index
                 matching_indices = [idx for idx in q_financials.index if "EPS" in str(idx)]
                 if matching_indices:
                     eps_row = q_financials.loc[matching_indices[0]]
@@ -901,15 +909,15 @@ with tab7:
             if eps_row is None:
                 return pd.DataFrame()
 
-            # 轉為 DataFrame，並「嚴格依時間由舊到新排序」以確保 rolling 4 季正確
+            # 轉為 DataFrame 並確保時間由舊到新排序以正確計算 rolling 4 季
             eps_df = pd.DataFrame({"EPS": eps_row}).dropna()
             eps_df.index = pd.to_datetime(eps_df.index).tz_localize(None).normalize()
             eps_df = eps_df.sort_index(ascending=True)
 
-            # 滾動計算 TTM EPS（最少需 4 季資料）
+            # 計算 TTM EPS (滾動 4 季求和)
             eps_df["TTM_EPS"] = eps_df["EPS"].rolling(window=4, min_periods=4).sum()
 
-            # 3. 合併股價與每季 TTM EPS (Left Join)
+            # 合併股價與 TTM EPS
             merged_df = pd.merge(
                 hist_df,
                 eps_df[["TTM_EPS"]],
@@ -918,30 +926,30 @@ with tab7:
                 how="left"
             )
 
-            # 向下填補：將每季產生的 TTM EPS 延伸填滿到下一季財報出來前的每一個交易日
+            # 向下填補 TTM EPS
             merged_df["TTM_EPS"] = merged_df["TTM_EPS"].ffill()
 
-            # 清除早期尚未累積滿 4 季 TTM 的 NaN 橫列
+            # 移除未滿 4 季資料的早期 NaN 橫列
             merged_df = merged_df.dropna(subset=["TTM_EPS", "Close"]).copy()
 
-            # 乾淨地將 Date 轉為獨立欄位
+            # 整理 Date 欄位
             merged_df = merged_df.reset_index()
-            # 確保欄位名稱統一稱為 Date
             if "index" in merged_df.columns:
                 merged_df.rename(columns={"index": "Date"}, inplace=True)
 
             return merged_df
 
         except Exception as e:
-            st.error(f"抓取或解析財務資料時發生錯誤: {e}")
+            st.error(f"抓取或解析 {symbol} 資料時發生錯誤: {e}")
             return pd.DataFrame()
 
-    with st.spinner("正在讀取台積電歷史價格與財務資料..."):
-        df_pe = fetch_tsmc_pe_data(period=period_option)
+    # 3. 讀取資料與圖表渲染
+    with st.spinner(f"正在讀取 {target_ticker} 歷史價格與財務數據..."):
+        df_pe = fetch_pe_data(symbol=target_ticker, period=period_option)
 
     if df_pe.empty or len(selected_pes) < 2:
         st.warning(
-            "⚠️ 無法取得資料（請檢查網路連線或 yfinance 回傳），或請至少選擇 2 個以上的本益比倍數以繪製河流圖！"
+            f"⚠️ 無法取得 {target_ticker} 資料（請確認代號與市場類別是否正確），或請至少選擇 2 個以上的本益比倍數！"
         )
     else:
         for pe in selected_pes:
@@ -956,6 +964,7 @@ with tab7:
             "rgba(100, 181, 246, 0.4)",
             "rgba(33, 150, 243, 0.4)",
             "rgba(30, 136, 229, 0.4)",
+            "rgba(21, 101, 192, 0.4)",
         ]
 
         for i in range(len(selected_pes) - 1):
@@ -992,13 +1001,13 @@ with tab7:
                 x=df_pe["Date"],
                 y=df_pe["Close"],
                 mode="lines",
-                name="台積電收盤價 (2330.TW)",
+                name=f"{target_ticker} 收盤價",
                 line=dict(color="#D32F2F", width=2.5),
             )
         )
 
         fig.update_layout(
-            title=f"台積電 (2330.TW) 本益比河流圖 ({period_option})",
+            title=f"{target_ticker} 本益比河流圖 ({period_option})",
             xaxis_title="日期",
             yaxis_title="價格 (TWD)",
             hovermode="x unified",
@@ -1023,6 +1032,7 @@ with tab7:
             current_pe = latest["Close"] / latest["TTM_EPS"]
 
             st.subheader("📌 最新估值數據")
+            st.metric("標的代號", target_ticker)
             st.metric("日期", str(pd.to_datetime(latest["Date"]).strftime("%Y-%m-%d")))
             st.metric("當前股價", f"NT$ {latest['Close']:.1f}")
             st.metric("近四季 TTM EPS", f"NT$ {latest['TTM_EPS']:.2f}")
