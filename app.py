@@ -852,13 +852,15 @@ with tab7:
         stock_code = st.text_input("輸入股票代號", value="2330").strip()
 
     with col_market:
-        market_suffix = st.selectbox("市場類別", options=[".TW", ".TWO"], index=0)
+        market_suffix = st.selectbox(
+            "市場類別", options=[".TW", ".TWO"], index=0
+        )
 
     with col_period:
         period_option = st.selectbox(
             "歷史時間範圍",
             options=["1y", "2y", "3y", "5y", "max"],
-            index=3, # 預設 5y
+            index=3,  # 預設 5y
         )
 
     target_ticker = f"{stock_code}{market_suffix}" if stock_code else "2330.TW"
@@ -866,27 +868,48 @@ with tab7:
     default_pe_ranges = [10, 12, 16, 20, 24, 28, 32]
     selected_pes = st.multiselect(
         "選擇本益比倍數區間",
-        options=[8, 10, 12, 14, 15, 16, 18, 20, 22, 24, 25, 26, 28, 30, 32, 35, 40, 50],
+        options=[
+            8,
+            10,
+            12,
+            14,
+            15,
+            16,
+            18,
+            20,
+            22,
+            24,
+            25,
+            26,
+            28,
+            30,
+            32,
+            35,
+            40,
+            50,
+        ],
         default=default_pe_ranges,
     )
     selected_pes = sorted(selected_pes)
 
-    # 2. 資料抓取與對齊函式 (修正 datetime 精度問題)
+    # 2. 資料抓取與對齊函式
     @st.cache_data(ttl=3600)
     def fetch_pe_data_rainbow(symbol, period="5y"):
         try:
             ticker = yf.Ticker(symbol)
-            
-            # 1. 抓取歷史股價
+
+            # A. 抓取歷史股價
             hist_df = ticker.history(period=period)
             if hist_df.empty:
                 return pd.DataFrame()
 
             hist_df = hist_df[["Close"]].copy()
-            hist_df.index = pd.to_datetime(hist_df.index).tz_localize(None).normalize()
+            hist_df.index = (
+                pd.to_datetime(hist_df.index).tz_localize(None).normalize()
+            )
             hist_df = hist_df.sort_index()
 
-            # 2. 抓取季報財務資料
+            # B. 抓取季報財務資料
             q_financials = ticker.quarterly_financials
             if q_financials is None or q_financials.empty:
                 q_financials = ticker.quarterly_incomestmt
@@ -894,56 +917,74 @@ with tab7:
             if q_financials is None or q_financials.empty:
                 return pd.DataFrame()
 
-            # 多重搜尋 EPS 相關欄位
+            # 搜尋 EPS 相關欄位
             eps_series = None
             possible_eps_names = [
-                "Basic EPS", "Diluted EPS", "BasicEPS", "DilutedEPS", 
-                "Normalized EPS", "Diluted NI Available to Com Stockholders"
+                "Basic EPS",
+                "Diluted EPS",
+                "BasicEPS",
+                "DilutedEPS",
+                "Normalized EPS",
+                "Diluted NI Available to Com Stockholders",
             ]
-            
+
             for candidate in possible_eps_names:
                 if candidate in q_financials.index:
                     eps_series = q_financials.loc[candidate]
                     break
 
             if eps_series is None:
-                matching_indices = [idx for idx in q_financials.index if "EPS" in str(idx).upper()]
+                matching_indices = [
+                    idx
+                    for idx in q_financials.index
+                    if "EPS" in str(idx).upper()
+                ]
                 if matching_indices:
                     eps_series = q_financials.loc[matching_indices[0]]
 
             if eps_series is None:
                 return pd.DataFrame()
 
+            # 確保 eps_series 為 1D Series (防止 yfinance 回傳 DataFrame)
+            if isinstance(eps_series, pd.DataFrame):
+                eps_series = eps_series.iloc[0]
+
             eps_df = pd.DataFrame({"EPS": eps_series})
             eps_df["EPS"] = pd.to_numeric(eps_df["EPS"], errors="coerce")
             eps_df = eps_df.dropna()
-            eps_df.index = pd.to_datetime(eps_df.index).tz_localize(None).normalize()
+            eps_df.index = (
+                pd.to_datetime(eps_df.index).tz_localize(None).normalize()
+            )
             eps_df = eps_df.sort_index(ascending=True)
 
-            # 計算 TTM EPS
-            eps_df["TTM_EPS"] = eps_df["EPS"].rolling(window=4, min_periods=1).sum()
+            # 計算 TTM EPS (近 4 季累加)
+            eps_df["TTM_EPS"] = (
+                eps_df["EPS"].rolling(window=4, min_periods=4).sum()
+            )
             eps_df = eps_df.dropna(subset=["TTM_EPS"])
 
             if eps_df.empty:
                 return pd.DataFrame()
 
-            # 3. 重置索引並處理日期
-            hist_df = hist_df.reset_index().rename(columns={"index": "Date", "Date": "Date"})
+            # C. 重置索引並處理日期對齊
+            hist_df = hist_df.reset_index().rename(
+                columns={"index": "Date", "Date": "Date"}
+            )
             eps_df = eps_df.reset_index().rename(columns={"index": "Date"})
 
-            # 粗略模擬財報發布日 (+45天)
+            # 模擬財報公告日 (遞延 45 天反映公開發布時間)
             eps_df["Date"] = eps_df["Date"] + pd.Timedelta(days=45)
 
-            # 🌟【核心修復點】：將雙方的 Date 強制轉為相同的 datetime64[s] 精度
+            # 強制轉換為相同的 datetime64[s] 精度
             hist_df["Date"] = hist_df["Date"].astype("datetime64[s]")
             eps_df["Date"] = eps_df["Date"].astype("datetime64[s]")
 
-            # 進行 merge_asof 對齊
+            # 使用 merge_asof 進行時間序列點對齊
             merged_df = pd.merge_asof(
                 hist_df.sort_values("Date"),
                 eps_df[["Date", "TTM_EPS"]].sort_values("Date"),
                 on="Date",
-                direction="backward"
+                direction="backward",
             )
 
             merged_df = merged_df.dropna(subset=["TTM_EPS", "Close"]).copy()
@@ -954,8 +995,12 @@ with tab7:
             return pd.DataFrame()
 
     # 3. 讀取資料與圖表渲染
-    with st.spinner(f"正在讀取 {target_ticker} 歷史價格與財務數據 (彩虹版)..."):
-        df_pe = fetch_pe_data_rainbow(symbol=target_ticker, period=period_option)
+    with st.spinner(
+        f"正在讀取 {target_ticker} 歷史價格與財務數據 (彩虹版)..."
+    ):
+        df_pe = fetch_pe_data_rainbow(
+            symbol=target_ticker, period=period_option
+        )
 
     if df_pe.empty or len(selected_pes) < 2:
         st.warning(
@@ -967,14 +1012,14 @@ with tab7:
 
         fig = go.Figure()
 
-        # 彩虹顏色 (紫、藍、綠、黃、橙、紅)
+        # 彩虹顏色階梯 (紫、藍、綠、黃、橙、紅)
         rainbow_colors = [
-            "rgba(148, 0, 211, 0.35)",   # 紫
-            "rgba(0, 0, 255, 0.35)",     # 藍
-            "rgba(0, 255, 0, 0.35)",     # 綠
-            "rgba(255, 255, 0, 0.35)",   # 黃
-            "rgba(255, 165, 0, 0.35)",   # 橙
-            "rgba(255, 0, 0, 0.35)",     # 紅
+            "rgba(148, 0, 211, 0.25)",  # 紫
+            "rgba(30, 144, 255, 0.25)",  # 藍
+            "rgba(46, 204, 113, 0.25)",  # 綠
+            "rgba(241, 196, 15, 0.25)",  # 黃
+            "rgba(230, 126, 34, 0.25)",  # 橙
+            "rgba(231, 76, 60, 0.25)",  # 紅
         ]
 
         # 最低 PE 基準線
@@ -984,18 +1029,18 @@ with tab7:
                 x=df_pe["Date"],
                 y=df_pe[f"{lowest_pe}x"],
                 mode="lines",
-                line=dict(width=0.5, color="rgba(150, 150, 150, 0.3)"),
+                line=dict(width=0.5, color="rgba(180, 180, 180, 0.4)"),
                 showlegend=False,
                 hoverinfo="skip",
             )
         )
 
-        # 彩虹河流填滿
+        # 彩虹河流填滿區間
         num_intervals = len(selected_pes) - 1
         for i in range(num_intervals):
             low_pe_val = selected_pes[i]
             high_pe_val = selected_pes[i + 1]
-            
+
             color_idx = i % len(rainbow_colors)
             current_fill_color = rainbow_colors[color_idx]
 
@@ -1004,7 +1049,7 @@ with tab7:
                     x=df_pe["Date"],
                     y=df_pe[f"{high_pe_val}x"],
                     mode="lines",
-                    line=dict(width=0.5, color="rgba(150, 150, 150, 0.2)"),
+                    line=dict(width=0.5, color="rgba(180, 180, 180, 0.3)"),
                     fill="tonexty",
                     fillcolor=current_fill_color,
                     name=f"{low_pe_val}x - {high_pe_val}x PE",
@@ -1012,33 +1057,36 @@ with tab7:
                 )
             )
 
-        # 實體股價線
+        # 實體股價線 (最上層)
         fig.add_trace(
             go.Scatter(
                 x=df_pe["Date"],
                 y=df_pe["Close"],
                 mode="lines",
                 name=f"{target_ticker} 收盤價",
-                line=dict(color="#D32F2F", width=3),
+                line=dict(color="#2962FF", width=2.5),  # 深藍醒目實線
                 hovertemplate="<b>收盤價</b>: NT$%{y:.1f}<extra></extra>",
             )
         )
 
         fig.update_layout(
-            title=dict(text=f"{target_ticker} 本益比河流圖 ({period_option}) - 彩虹版", font=dict(size=20)),
+            title=dict(
+                text=f"{target_ticker} 本益比河流圖 ({period_option})",
+                font=dict(size=18),
+            ),
             xaxis_title="日期",
             yaxis_title="價格 (TWD)",
             hovermode="x unified",
             template="plotly_white",
-            height=650,
-            margin=dict(l=10, r=10, t=60, b=10),
+            height=600,
+            margin=dict(l=10, r=10, t=50, b=10),
             legend=dict(
                 orientation="h",
                 yanchor="bottom",
                 y=1.02,
                 xanchor="right",
                 x=1,
-                font=dict(size=12),
+                font=dict(size=11),
             ),
             yaxis=dict(tickformat=".1f"),
         )
@@ -1046,35 +1094,53 @@ with tab7:
         col_chart, col_metric = st.columns([3.5, 1])
 
         with col_chart:
-            st.plotly_chart(fig, use_container_width=True, config={'displayModeBar': False})
+            st.plotly_chart(
+                fig, use_container_width=True, config={"displayModeBar": False}
+            )
 
         with col_metric:
             latest_data = df_pe.iloc[-1]
             if latest_data["TTM_EPS"] > 0:
-                current_pe_ratio = latest_data["Close"] / latest_data["TTM_EPS"]
+                current_pe_ratio = (
+                    latest_data["Close"] / latest_data["TTM_EPS"]
+                )
             else:
                 current_pe_ratio = 0
 
-            st.subheader("📌 最新 Valuation")
+            st.subheader("📌 Valuation 明細")
             st.metric("標的代號", target_ticker)
-            st.metric("資料日期", pd.to_datetime(latest_data["Date"]).strftime("%Y-%m-%d"))
+            st.metric(
+                "資料日期",
+                pd.to_datetime(latest_data["Date"]).strftime("%Y-%m-%d"),
+            )
             st.metric("當前股價", f"NT$ {latest_data['Close']:.1f}")
-            st.metric("TTM EPS (近四季)", f"NT$ {latest_data['TTM_EPS']:.2f}")
-            
-            pe_color = "black"
-            if current_pe_ratio > 0:
-                if current_pe_ratio <= selected_pes[0]: pe_color = "purple"
-                elif current_pe_ratio >= selected_pes[-1]: pe_color = "red"
-                else: pe_color = "green"
+            st.metric(
+                "TTM EPS (近四季)", f"NT$ {latest_data['TTM_EPS']:.2f}"
+            )
 
-            st.markdown(f"當前本益比 (PE): <span style='color:{pe_color}; font-size:24px; font-weight:bold;'>{current_pe_ratio:.2f} 倍</span>", unsafe_allow_html=True)
-            st.caption(f"選取範圍: {selected_pes[0]}x (紫) ~ {selected_pes[-1]}x (紅)")
+            pe_color = "#333333"
+            if current_pe_ratio > 0:
+                if current_pe_ratio <= selected_pes[0]:
+                    pe_color = "#8E44AD"  # 紫
+                elif current_pe_ratio >= selected_pes[-1]:
+                    pe_color = "#C0392B"  # 紅
+                else:
+                    pe_color = "#27AE60"  # 綠
+
+            st.markdown(
+                f"當前本益比 (PE): <br><span style='color:{pe_color}; font-size:26px; font-weight:bold;'>{current_pe_ratio:.2f} 倍</span>",
+                unsafe_allow_html=True,
+            )
+            st.caption(
+                f"選取範圍: {selected_pes[0]}x (紫) ~ {selected_pes[-1]}x (紅)"
+            )
 
         with st.expander("查看完整原始數據對齊明細"):
             st.dataframe(
                 df_pe.sort_values("Date", ascending=False).style.format({
-                    'Close': '{:.1f}', 'TTM_EPS': '{:.2f}', 
-                    **{f"{pe}x": '{:.1f}' for pe in selected_pes}
-                }), 
-                use_container_width=True
+                    "Close": "{:.1f}",
+                    "TTM_EPS": "{:.2f}",
+                    **{f"{pe}x": "{:.1f}" for pe in selected_pes},
+                }),
+                use_container_width=True,
             )
