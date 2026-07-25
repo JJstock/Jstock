@@ -849,7 +849,7 @@ with tab7:
     col_sym, col_market, col_period = st.columns([2, 1, 2])
 
     with col_sym:
-        stock_code = st.text_input("輸入股票代號", value="2330").strip()
+        stock_code = st.text_input("輸入股票代號", value="2454").strip()
 
     with col_market:
         market_suffix = st.selectbox("市場類別", options=[".TW", ".TWO"], index=0)
@@ -861,8 +861,7 @@ with tab7:
             index=3,
         )
 
-    # 組合完整的 yfinance ticker 名稱 (例如: 2330.TW 或 6547.TWO)
-    target_ticker = f"{stock_code}{market_suffix}" if stock_code else "2330.TW"
+    target_ticker = f"{stock_code}{market_suffix}" if stock_code else "2454.TW"
 
     selected_pes = st.multiselect(
         "選擇本益比倍數區間",
@@ -871,7 +870,7 @@ with tab7:
     )
     selected_pes = sorted(selected_pes)
 
-    # 2. 資料抓取與對齊函式
+    # 2. 強化版資料抓取與對齊函式
     @st.cache_data(ttl=3600)
     def fetch_pe_data(symbol, period="5y"):
         try:
@@ -886,7 +885,7 @@ with tab7:
             hist_df.index = pd.to_datetime(hist_df.index).tz_localize(None).normalize()
             hist_df = hist_df.sort_index()
 
-            # 2. 抓取季報財務資料（雙重備援機制）
+            # 2. 抓取季報財務資料（多重備援機制）
             q_financials = ticker.quarterly_financials
             if q_financials is None or q_financials.empty:
                 q_financials = ticker.quarterly_incomestmt
@@ -894,8 +893,8 @@ with tab7:
             if q_financials is None or q_financials.empty:
                 return pd.DataFrame()
 
-            # 廣義比對 EPS 欄位
-            eps_row = None
+            # 多重搜尋 EPS 相關欄位
+            eps_series = None
             possible_eps_names = [
                 "Basic EPS", 
                 "Diluted EPS", 
@@ -906,34 +905,56 @@ with tab7:
                 "Diluted EPS Including Extraordinary Items"
             ]
             
+            # (a) 精準匹配
             for candidate in possible_eps_names:
                 if candidate in q_financials.index:
-                    eps_row = q_financials.loc[candidate]
+                    eps_series = q_financials.loc[candidate]
                     break
 
-            if eps_row is None:
+            # (b) 模糊匹配
+            if eps_series is None:
                 matching_indices = [idx for idx in q_financials.index if "EPS" in str(idx).upper()]
                 if matching_indices:
-                    eps_row = q_financials.loc[matching_indices[0]]
+                    eps_series = q_financials.loc[matching_indices[0]]
 
-            if eps_row is None:
+            # (c) 備援推算：若依然抓不到 EPS，用 Net Income / 股數 推算
+            if eps_series is None:
+                net_income_names = ["Net Income Common Stockholders", "Net Income", "Net Income From Continuing Operation Net Minority Interest"]
+                shares_names = ["Diluted Average Shares", "Basic Average Shares"]
+                
+                net_inc = None
+                shares = None
+                
+                for ni_name in net_income_names:
+                    if ni_name in q_financials.index:
+                        net_inc = q_financials.loc[ni_name]
+                        break
+                for s_name in shares_names:
+                    if s_name in q_financials.index:
+                        shares = q_financials.loc[s_name]
+                        break
+                
+                if net_inc is not None and shares is not None:
+                    eps_series = net_inc / shares
+
+            if eps_series is None:
                 return pd.DataFrame()
 
-            # 整理每季 EPS
-            eps_df = pd.DataFrame({"EPS": eps_row})
+            # 轉換為數值並排序
+            eps_df = pd.DataFrame({"EPS": eps_series})
             eps_df["EPS"] = pd.to_numeric(eps_df["EPS"], errors="coerce")
             eps_df = eps_df.dropna()
             eps_df.index = pd.to_datetime(eps_df.index).tz_localize(None).normalize()
             eps_df = eps_df.sort_index(ascending=True)
 
-            # 計算 TTM EPS (滾動 4 季累加)
-            eps_df["TTM_EPS"] = eps_df["EPS"].rolling(window=4, min_periods=4).sum()
+            # 計算 TTM EPS (滾動求和，放寬 min_periods 避免不足 4 季時整張清空)
+            eps_df["TTM_EPS"] = eps_df["EPS"].rolling(window=4, min_periods=1).sum()
             eps_df = eps_df.dropna(subset=["TTM_EPS"])
 
             if eps_df.empty:
                 return pd.DataFrame()
 
-            # 3. 使用 merge_asof 進行時間序列點對齊 (防止日期不一致導致 ffill 失敗)
+            # 3. 使用 merge_asof 對齊時間軸
             hist_df = hist_df.reset_index().rename(columns={"Date": "Date"})
             eps_df = eps_df.reset_index().rename(columns={"index": "Date"})
 
@@ -941,17 +962,17 @@ with tab7:
                 hist_df.sort_values("Date"),
                 eps_df[["Date", "TTM_EPS"]].sort_values("Date"),
                 on="Date",
-                direction="backward"  # 匹配當前日期以前最新的 EPS
+                direction="backward"
             )
 
             merged_df = merged_df.dropna(subset=["TTM_EPS", "Close"]).copy()
             return merged_df
 
         except Exception as e:
-            st.error(f"抓取或解析 {symbol} 資料時發生錯誤: {e}")
+            st.error(f"解析 {symbol} 資料時發生錯誤: {e}")
             return pd.DataFrame()
 
-    # 3. 讀取資料與圖表渲染
+    # 3. 讀取資料與繪圖
     with st.spinner(f"正在讀取 {target_ticker} 歷史價格與財務數據..."):
         df_pe = fetch_pe_data(symbol=target_ticker, period=period_option)
 
@@ -960,7 +981,6 @@ with tab7:
             f"⚠️ 無法取得 {target_ticker} 資料（請確認代號與市場類別是否正確），或請至少選擇 2 個以上的本益比倍數！"
         )
     else:
-        # 計算各本益比倍數對應的價格
         for pe in selected_pes:
             df_pe[f"{pe}x"] = df_pe["TTM_EPS"] * pe
 
@@ -976,20 +996,19 @@ with tab7:
             "rgba(21, 101, 192, 0.4)",
         ]
 
-        # 畫最底層的基準線 (最低本益比)
+        # 基礎邊界線
         fig.add_trace(
             go.Scatter(
                 x=df_pe["Date"],
                 y=df_pe[f"{selected_pes[0]}x"],
                 mode="lines",
                 line=dict(width=0.5, color="rgba(100, 181, 246, 0.5)"),
-                name=f"{selected_pes[0]}x PE",
                 showlegend=False,
                 hoverinfo="skip",
             )
         )
 
-        # 依序填滿河流圖區塊
+        # 河流填滿區間
         for i in range(len(selected_pes) - 1):
             low_pe = selected_pes[i]
             high_pe = selected_pes[i + 1]
@@ -1008,7 +1027,7 @@ with tab7:
                 )
             )
 
-        # 疊加收盤價曲線
+        # 股價線
         fig.add_trace(
             go.Scatter(
                 x=df_pe["Date"],
@@ -1027,7 +1046,6 @@ with tab7:
             hovermode="x unified",
             template="plotly_white",
             height=620,
-            margin=dict(l=20, r=20, t=50, b=20),
             legend=dict(
                 orientation="h",
                 yanchor="bottom",
