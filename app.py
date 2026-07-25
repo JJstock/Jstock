@@ -892,13 +892,13 @@ with tab7:
     )
     selected_pes = sorted(selected_pes)
 
-    # 2. 資料抓取與對齊函式
+    # 2. 資料抓取與對齊函式 (修正 datetime 精度問題)
     @st.cache_data(ttl=3600)
     def fetch_pe_data_rainbow(symbol, period="5y"):
         try:
             ticker = yf.Ticker(symbol)
 
-            # A. 抓取歷史股價
+            # 1. 抓取歷史股價
             hist_df = ticker.history(period=period)
             if hist_df.empty:
                 return pd.DataFrame()
@@ -909,7 +909,7 @@ with tab7:
             )
             hist_df = hist_df.sort_index()
 
-            # B. 抓取季報財務資料
+            # 2. 抓取季報財務資料
             q_financials = ticker.quarterly_financials
             if q_financials is None or q_financials.empty:
                 q_financials = ticker.quarterly_incomestmt
@@ -917,7 +917,7 @@ with tab7:
             if q_financials is None or q_financials.empty:
                 return pd.DataFrame()
 
-            # 搜尋 EPS 相關欄位
+            # 多重搜尋 EPS 相關欄位
             eps_series = None
             possible_eps_names = [
                 "Basic EPS",
@@ -945,7 +945,7 @@ with tab7:
             if eps_series is None:
                 return pd.DataFrame()
 
-            # 確保 eps_series 為 1D Series (防止 yfinance 回傳 DataFrame)
+            # 🛡️ 最小防護：確保 eps_series 為單維度 Series (避免多維 DataFrame 導致 to_numeric 崩潰)
             if isinstance(eps_series, pd.DataFrame):
                 eps_series = eps_series.iloc[0]
 
@@ -957,29 +957,29 @@ with tab7:
             )
             eps_df = eps_df.sort_index(ascending=True)
 
-            # 計算 TTM EPS (近 4 季累加)
+            # 計算 TTM EPS (保持您原本的 min_periods=1 彈性)
             eps_df["TTM_EPS"] = (
-                eps_df["EPS"].rolling(window=4, min_periods=4).sum()
+                eps_df["EPS"].rolling(window=4, min_periods=1).sum()
             )
             eps_df = eps_df.dropna(subset=["TTM_EPS"])
 
             if eps_df.empty:
                 return pd.DataFrame()
 
-            # C. 重置索引並處理日期對齊
+            # 3. 重置索引並處理日期
             hist_df = hist_df.reset_index().rename(
                 columns={"index": "Date", "Date": "Date"}
             )
             eps_df = eps_df.reset_index().rename(columns={"index": "Date"})
 
-            # 模擬財報公告日 (遞延 45 天反映公開發布時間)
+            # 粗略模擬財報發布日 (+45天)
             eps_df["Date"] = eps_df["Date"] + pd.Timedelta(days=45)
 
-            # 強制轉換為相同的 datetime64[s] 精度
+            # 🌟【核心修復點】：將雙方的 Date 強制轉為相同的 datetime64[s] 精度
             hist_df["Date"] = hist_df["Date"].astype("datetime64[s]")
             eps_df["Date"] = eps_df["Date"].astype("datetime64[s]")
 
-            # 使用 merge_asof 進行時間序列點對齊
+            # 進行 merge_asof 對齊
             merged_df = pd.merge_asof(
                 hist_df.sort_values("Date"),
                 eps_df[["Date", "TTM_EPS"]].sort_values("Date"),
@@ -1012,14 +1012,14 @@ with tab7:
 
         fig = go.Figure()
 
-        # 彩虹顏色階梯 (紫、藍、綠、黃、橙、紅)
+        # 彩虹顏色 (紫、藍、綠、黃、橙、紅) - 完全還原原本顏色設定
         rainbow_colors = [
-            "rgba(148, 0, 211, 0.25)",  # 紫
-            "rgba(30, 144, 255, 0.25)",  # 藍
-            "rgba(46, 204, 113, 0.25)",  # 綠
-            "rgba(241, 196, 15, 0.25)",  # 黃
-            "rgba(230, 126, 34, 0.25)",  # 橙
-            "rgba(231, 76, 60, 0.25)",  # 紅
+            "rgba(148, 0, 211, 0.35)",  # 紫
+            "rgba(0, 0, 255, 0.35)",  # 藍
+            "rgba(0, 255, 0, 0.35)",  # 綠
+            "rgba(255, 255, 0, 0.35)",  # 黃
+            "rgba(255, 165, 0, 0.35)",  # 橙
+            "rgba(255, 0, 0, 0.35)",  # 紅
         ]
 
         # 最低 PE 基準線
@@ -1029,13 +1029,13 @@ with tab7:
                 x=df_pe["Date"],
                 y=df_pe[f"{lowest_pe}x"],
                 mode="lines",
-                line=dict(width=0.5, color="rgba(180, 180, 180, 0.4)"),
+                line=dict(width=0.5, color="rgba(150, 150, 150, 0.3)"),
                 showlegend=False,
                 hoverinfo="skip",
             )
         )
 
-        # 彩虹河流填滿區間
+        # 彩虹河流填滿
         num_intervals = len(selected_pes) - 1
         for i in range(num_intervals):
             low_pe_val = selected_pes[i]
@@ -1049,7 +1049,7 @@ with tab7:
                     x=df_pe["Date"],
                     y=df_pe[f"{high_pe_val}x"],
                     mode="lines",
-                    line=dict(width=0.5, color="rgba(180, 180, 180, 0.3)"),
+                    line=dict(width=0.5, color="rgba(150, 150, 150, 0.2)"),
                     fill="tonexty",
                     fillcolor=current_fill_color,
                     name=f"{low_pe_val}x - {high_pe_val}x PE",
@@ -1057,36 +1057,36 @@ with tab7:
                 )
             )
 
-        # 實體股價線 (最上層)
+        # 實體股價線 - 完全還原原本紅色顯眼樣式
         fig.add_trace(
             go.Scatter(
                 x=df_pe["Date"],
                 y=df_pe["Close"],
                 mode="lines",
                 name=f"{target_ticker} 收盤價",
-                line=dict(color="#2962FF", width=2.5),  # 深藍醒目實線
+                line=dict(color="#D32F2F", width=3),
                 hovertemplate="<b>收盤價</b>: NT$%{y:.1f}<extra></extra>",
             )
         )
 
         fig.update_layout(
             title=dict(
-                text=f"{target_ticker} 本益比河流圖 ({period_option})",
-                font=dict(size=18),
+                text=f"{target_ticker} 本益比河流圖 ({period_option}) - 彩虹版",
+                font=dict(size=20),
             ),
             xaxis_title="日期",
             yaxis_title="價格 (TWD)",
             hovermode="x unified",
             template="plotly_white",
-            height=600,
-            margin=dict(l=10, r=10, t=50, b=10),
+            height=650,
+            margin=dict(l=10, r=10, t=60, b=10),
             legend=dict(
                 orientation="h",
                 yanchor="bottom",
                 y=1.02,
                 xanchor="right",
                 x=1,
-                font=dict(size=11),
+                font=dict(size=12),
             ),
             yaxis=dict(tickformat=".1f"),
         )
@@ -1107,7 +1107,7 @@ with tab7:
             else:
                 current_pe_ratio = 0
 
-            st.subheader("📌 Valuation 明細")
+            st.subheader("📌 最新 Valuation")
             st.metric("標的代號", target_ticker)
             st.metric(
                 "資料日期",
@@ -1118,17 +1118,17 @@ with tab7:
                 "TTM EPS (近四季)", f"NT$ {latest_data['TTM_EPS']:.2f}"
             )
 
-            pe_color = "#333333"
+            pe_color = "black"
             if current_pe_ratio > 0:
                 if current_pe_ratio <= selected_pes[0]:
-                    pe_color = "#8E44AD"  # 紫
+                    pe_color = "purple"
                 elif current_pe_ratio >= selected_pes[-1]:
-                    pe_color = "#C0392B"  # 紅
+                    pe_color = "red"
                 else:
-                    pe_color = "#27AE60"  # 綠
+                    pe_color = "green"
 
             st.markdown(
-                f"當前本益比 (PE): <br><span style='color:{pe_color}; font-size:26px; font-weight:bold;'>{current_pe_ratio:.2f} 倍</span>",
+                f"當前本益比 (PE): <span style='color:{pe_color}; font-size:24px; font-weight:bold;'>{current_pe_ratio:.2f} 倍</span>",
                 unsafe_allow_html=True,
             )
             st.caption(
