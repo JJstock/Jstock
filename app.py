@@ -866,39 +866,50 @@ with tab7:
     def fetch_tsmc_pe_data(period="5y"):
         try:
             ticker = yf.Ticker("2330.TW")
-    
+
             # 1. 抓取歷史股價
             hist_df = ticker.history(period=period)
             if hist_df.empty:
                 return pd.DataFrame()
-    
+
             hist_df = hist_df[["Close"]].copy()
-            # 移除時區並僅保留「日期」部分，方便後續合併
+            # 移除時區並統一天數規格
             hist_df.index = pd.to_datetime(hist_df.index).tz_localize(None).normalize()
-    
-            # 2. 抓取季報資料
+
+            # 2. 抓取季報財務資料
             q_financials = ticker.quarterly_financials
             if q_financials is None or q_financials.empty:
                 return pd.DataFrame()
-    
-            # 彈性比對 EPS 欄位（比對大小寫與常見變數名）
+
+            # 廣義搜尋 EPS 相關欄位名
             eps_row = None
-            for candidate in ["Basic EPS", "Diluted EPS", "BasicEPS", "DilutedEPS"]:
+            possible_eps_names = [
+                "Basic EPS", "Diluted EPS", "BasicEPS", "DilutedEPS", 
+                "Normalized EPS", "Diluted NI Available to Com Stockholders"
+            ]
+            for candidate in possible_eps_names:
                 if candidate in q_financials.index:
                     eps_row = q_financials.loc[candidate]
                     break
-    
+
+            if eps_row is None:
+                # 備用方案：若完全找不到名稱，嘗試搜尋帶有 EPS 字樣的 index
+                matching_indices = [idx for idx in q_financials.index if "EPS" in str(idx)]
+                if matching_indices:
+                    eps_row = q_financials.loc[matching_indices[0]]
+
             if eps_row is None:
                 return pd.DataFrame()
-    
-            # 整理 EPS 並依日期由舊到新排序
-            eps_df = pd.DataFrame({"EPS": eps_row}).dropna().sort_index()
+
+            # 轉為 DataFrame，並「嚴格依時間由舊到新排序」以確保 rolling 4 季正確
+            eps_df = pd.DataFrame({"EPS": eps_row}).dropna()
             eps_df.index = pd.to_datetime(eps_df.index).tz_localize(None).normalize()
-    
-            # 計算 TTM EPS (滾動 4 季求和)
+            eps_df = eps_df.sort_index(ascending=True)
+
+            # 滾動計算 TTM EPS（最少需 4 季資料）
             eps_df["TTM_EPS"] = eps_df["EPS"].rolling(window=4, min_periods=4).sum()
-    
-            # 3. 合併股價與 EPS (以股價日期為基準 Left Join)
+
+            # 3. 合併股價與每季 TTM EPS (Left Join)
             merged_df = pd.merge(
                 hist_df,
                 eps_df[["TTM_EPS"]],
@@ -906,27 +917,31 @@ with tab7:
                 right_index=True,
                 how="left"
             )
-            
-            # 向下填補（將每季發布的 TTM EPS 延伸填滿到下一次財報發布日前的每一天）
+
+            # 向下填補：將每季產生的 TTM EPS 延伸填滿到下一季財報出來前的每一個交易日
             merged_df["TTM_EPS"] = merged_df["TTM_EPS"].ffill()
-    
-            # 清除尚未有滿 4 季 TTM 數據的早期空白列
-            merged_df = merged_df.dropna(subset=["TTM_EPS", "Close"])
-            merged_df.reset_index(inplace=True)
-            merged_df.rename(columns={"Date": "Date", "index": "Date"}, inplace=True)
-    
+
+            # 清除早期尚未累積滿 4 季 TTM 的 NaN 橫列
+            merged_df = merged_df.dropna(subset=["TTM_EPS", "Close"]).copy()
+
+            # 乾淨地將 Date 轉為獨立欄位
+            merged_df = merged_df.reset_index()
+            # 確保欄位名稱統一稱為 Date
+            if "index" in merged_df.columns:
+                merged_df.rename(columns={"index": "Date"}, inplace=True)
+
             return merged_df
 
-    except Exception as e:
-        st.error(f"抓取或解析財務資料時發生錯誤: {e}")
-        return pd.DataFrame()
+        except Exception as e:
+            st.error(f"抓取或解析財務資料時發生錯誤: {e}")
+            return pd.DataFrame()
 
     with st.spinner("正在讀取台積電歷史價格與財務資料..."):
         df_pe = fetch_tsmc_pe_data(period=period_option)
 
     if df_pe.empty or len(selected_pes) < 2:
         st.warning(
-            "⚠️ 無法取得資料，或請至少選擇 2 個以上的本益比倍數以繪製河流圖！"
+            "⚠️ 無法取得資料（請檢查網路連線或 yfinance 回傳），或請至少選擇 2 個以上的本益比倍數以繪製河流圖！"
         )
     else:
         for pe in selected_pes:
@@ -1008,7 +1023,7 @@ with tab7:
             current_pe = latest["Close"] / latest["TTM_EPS"]
 
             st.subheader("📌 最新估值數據")
-            st.metric("日期", str(latest["Date"].strftime("%Y-%m-%d")))
+            st.metric("日期", str(pd.to_datetime(latest["Date"]).strftime("%Y-%m-%d")))
             st.metric("當前股價", f"NT$ {latest['Close']:.1f}")
             st.metric("近四季 TTM EPS", f"NT$ {latest['TTM_EPS']:.2f}")
             st.metric(
