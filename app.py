@@ -68,7 +68,7 @@ def get_stock_data(ticker):
     }, df
 
 # --- 主程式流程 ---
-tab1, tab2, tab3, tab4 ,tab5 ,tab6= st.tabs(["📊 主監控頁面", "🏦 金農專區","📊題材專區", "📈 月營收監控","📊重訊查詢","🚀 查詢 ETF 成分股"])
+tab1, tab2, tab3, tab4 ,tab5 ,tab6,tab7= st.tabs(["📊 主監控頁面", "🏦 金農專區","📊題材專區", "📈 月營收監控","📊重訊查詢","🚀 查詢 ETF 成分股"],"📈本益比河流圖")
 
 if 'my_stocks' not in st.session_state:
     st.session_state.my_stocks = {
@@ -661,3 +661,186 @@ with tab6:
                 )
             else:
                 st.error("無法抓取資料，請確認該頁面表格結構是否變更。")
+
+# -----------------------------------------------------------------------------
+# Tab 7：台積電 (2330.TW) 本益比河流圖實作
+# -----------------------------------------------------------------------------
+with tabs7:
+  st.header("🇹🇼 台積電 (2330.TW) 本益比河流圖")
+  st.caption("資料來源：yfinance (自動進行 TTM EPS 與每日股價對齊)")
+
+  # 控制項：選擇時間區間與 PE 倍數
+  col_ctrl1, col_ctrl2 = st.columns([1, 2])
+
+  with col_ctrl1:
+    period_option = st.selectbox(
+        "選擇歷史時間範圍",
+        options=["1y", "2y", "3y", "5y", "max"],
+        index=3,
+    )
+
+  with col_ctrl2:
+    selected_pes = st.multiselect(
+        "選擇本益比倍數區間",
+        options=[10, 12, 15, 18, 20, 22, 25, 28, 30, 35],
+        default=[12, 15, 18, 22, 25],
+    )
+    selected_pes = sorted(selected_pes)
+
+  # -------------------------------------------------------------------------
+  # yfinance 數據抓取與 TTM EPS 計算函數
+  # -------------------------------------------------------------------------
+  @st.cache_data(ttl=3600)
+  def fetch_tsmc_pe_data(period="5y"):
+    ticker = yf.Ticker("2330.TW")
+
+    # 1. 抓取歷史日收盤價
+    hist_df = ticker.history(period=period)
+    if hist_df.empty:
+      return pd.DataFrame()
+
+    hist_df = hist_df[["Close"]].copy()
+    hist_df.index = pd.to_datetime(hist_df.index).tz_localize(
+        None
+    )  # 移除時區資訊
+
+    # 2. 抓取季報並計算近四季累積 EPS (TTM EPS)
+    q_financials = ticker.quarterly_financials
+    if (
+        q_financials.empty
+        or "Basic EPS" not in q_financials.index
+        and "Diluted EPS" not in q_financials.index
+    ):
+      # 若無獨立 EPS 欄位，嘗試從 Net Income 估算或使用備用名稱
+      eps_row = (
+          q_financials.loc["Basic EPS"]
+          if "Basic EPS" in q_financials.index
+          else q_financials.loc["Diluted EPS"]
+      )
+    else:
+      eps_row = q_financials.loc["Basic EPS"]
+
+    # 整理季報 EPS 時間序列 (由舊到新排序)
+    eps_df = pd.DataFrame({"EPS": eps_row}).sort_index()
+    eps_df.index = pd.to_datetime(eps_df.index).tz_localize(None)
+
+    # 計算滾動近 4 季 EPS 之和 (Rolling TTM)
+    eps_df["TTM_EPS"] = eps_df["EPS"].rolling(window=4).sum()
+
+    # 3. 將每日股價與季報 TTM EPS 進行合併，並向前填補 (ffill)
+    merged_df = pd.merge(
+        hist_df, eps_df[["TTM_EPS"]], left_index=True, right_index=True, how="left"
+    )
+    merged_df["TTM_EPS"] = merged_df["TTM_EPS"].ffill()
+
+    # 剔除尚未累積滿 4 季 TTM EPS 的早期空值
+    merged_df = merged_df.dropna(subset=["TTM_EPS", "Close"])
+    merged_df.reset_index(inplace=True)
+    merged_df.rename(columns={"index": "Date"}, inplace=True)
+
+    return merged_df
+
+  # 載入資料
+  with st.spinner("正在讀取台積電歷史價格與財務資料..."):
+    df = fetch_tsmc_pe_data(period=period_option)
+
+  if df.empty or len(selected_pes) < 2:
+    st.warning(
+        "⚠️ 無法取得資料，或請至少選擇 2 個以上的本益比倍數以繪製河流圖！"
+    )
+  else:
+    # 算各本益比價格帶
+    for pe in selected_pes:
+      df[f"{pe}x"] = df["TTM_EPS"] * pe
+
+    # -------------------------------------------------------------------------
+    # 繪製 Plotly 河流圖
+    # -------------------------------------------------------------------------
+    fig = go.Figure()
+
+    # 漸層藍色系
+    fill_colors = [
+        "rgba(227, 242, 253, 0.4)",
+        "rgba(187, 222, 251, 0.4)",
+        "rgba(144, 202, 249, 0.4)",
+        "rgba(100, 181, 246, 0.4)",
+        "rgba(33, 150, 243, 0.4)",
+        "rgba(30, 136, 229, 0.4)",
+    ]
+
+    for i in range(len(selected_pes) - 1):
+      low_pe = selected_pes[i]
+      high_pe = selected_pes[i + 1]
+      c_idx = i % len(fill_colors)
+
+      # 繪製上邊界（基準線）
+      fig.add_trace(
+          go.Scatter(
+              x=df["Date"],
+              y=df[f"{high_pe}x"],
+              mode="lines",
+              line=dict(width=0.3, color="#90CAF9"),
+              showlegend=False,
+              hoverinfo="skip",
+          )
+      )
+
+      # 繪製下邊界並向上填滿區域
+      fig.add_trace(
+          go.Scatter(
+              x=df["Date"],
+              y=df[f"{low_pe}x"],
+              mode="lines",
+              line=dict(width=0.3, color="#90CAF9"),
+              fill="tonexty",
+              fillcolor=fill_colors[c_idx],
+              name=f"{low_pe}x - {high_pe}x PE",
+              hoverinfo="x+y",
+          )
+      )
+
+    # 繪製台積電實際收盤價
+    fig.add_trace(
+        go.Scatter(
+            x=df["Date"],
+            y=df["Close"],
+            mode="lines",
+            name="台積電收盤價 (2330.TW)",
+            line=dict(color="#D32F2F", width=2.5),  # 紅色線條突出股價
+        )
+    )
+
+    fig.update_layout(
+        title=f"台積電 (2330.TW) 本益比河流圖 ({period_option})",
+        xaxis_title="日期",
+        yaxis_title="價格 (TWD)",
+        hovermode="x unified",
+        template="plotly_white",
+        height=620,
+        legend=dict(
+            orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1
+        ),
+    )
+
+    # 展示圖表與右側指標
+    col_chart, col_metric = st.columns([3, 1])
+
+    with col_chart:
+      st.plotly_chart(fig, use_container_width=True)
+
+    with col_metric:
+      latest = df.iloc[-1]
+      current_pe = latest["Close"] / latest["TTM_EPS"]
+
+      st.subheader("📌 最新估值數據")
+      st.metric("日期", str(latest["Date"].strftime("%Y-%m-%d")))
+      st.metric("當前股價", f"NT$ {latest['Close']:.1f}")
+      st.metric("近四季 TTM EPS", f"NT$ {latest['TTM_EPS']:.2f}")
+      st.metric(
+          "當前本益比 (PE)",
+          f"{current_pe:.2f} 倍",
+          delta=f"相較最低帶 ({selected_pes[0]}x)",
+      )
+
+    with st.expander("查看原始數據明細"):
+      st.dataframe(df, use_container_width=True)
