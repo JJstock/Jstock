@@ -138,8 +138,8 @@ def get_stock_data(ticker):
 # --- 主程式流程 ---
 tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs([
     "📊 主監控頁面",
+    "📈 題材專區",
     "🏦 金農專區",
-    "📊 題材專區",
     "📈 月營收監控",
     "📊 重訊查詢",
     "🚀 查詢 ETF 成分股",
@@ -250,8 +250,80 @@ with tab1:
     if selected_ticker:
         plot_stock_chart(selected_ticker)
 
-# --- TAB 2: 金農專區 ---
+
+# --- TAB 2: 題材專區 ---
 with tab2:
+    st.subheader("📋 題材專區")
+    topic_stocks = {
+        "3008.TW": {"名稱": "大立光", "題材": "光學鏡頭"},
+        "3406.TW": {"名稱": "玉晶光", "題材": "光學鏡頭"},
+        "3042.TW": {"名稱": "晶技", "題材": "石英元件"},
+        "2059.TW": {"名稱": "川湖", "題材": "滑軌"},
+        "3017.TW": {"名稱": "奇鋐", "題材": "散熱"},
+        "2327.TW": {"名稱": "國巨", "題材": "被動元件"},
+        "1303.TW": {"名稱": "南亞", "題材": "玻纖布 CCL"},
+        "2382.TW": {"名稱": "廣達", "題材": "伺服器"},
+        "3231.TW": {"名稱": "緯創", "題材": "伺服器"},
+        "6669.TW": {"名稱": "緯穎", "題材": "伺服器"},
+        "2408.TW": {"名稱": "南亞科", "題材": "DRAM製造"},
+        "2344.TW": {"名稱": "華邦電", "題材": "記憶體"},
+        "8299.TWO": {"名稱": "群聯", "題材": "快閃記憶體"},
+        "6488.TWO": {"名稱": "環球晶", "題材": "矽晶圓-美光"},
+        
+    }
+    topic_data = []
+
+    for sym, info_dict in topic_stocks.items():
+        metrics_dict, df = get_stock_data(sym)
+        if metrics_dict is None:
+            continue
+
+        row = {
+            "名稱": f"{sym} {info_dict['名稱']}",
+            "題材": info_dict["題材"],
+        }
+        row.update(metrics_dict)
+        topic_data.append(row)
+
+    if topic_data:
+        df_topic = pd.DataFrame(topic_data).set_index("名稱")
+        st.dataframe(
+            df_topic,
+            use_container_width=True,
+            column_config={
+                "_index": st.column_config.TextColumn(
+                    "股票名稱", width="medium"
+                ),
+                "題材": st.column_config.TextColumn("題材", width="small"),
+                "現價": st.column_config.TextColumn("現價", width="small"),
+                "狀態": st.column_config.TextColumn("狀態", width="medium"),
+                "Trailing (PE/EPS)": st.column_config.TextColumn(
+                    "Trailing PE/EPS", width="medium"
+                ),
+                "Forward (PE/EPS)": st.column_config.TextColumn(
+                    "Forward PE/EPS", width="medium"
+                ),
+                "PEG": st.column_config.TextColumn(
+                    "PEG (trail/growth)", width="small"
+                ),
+                "成長率": st.column_config.TextColumn("成長率", width="small"),
+            },
+        )
+    else:
+        st.info("正在讀取資料，請稍候...")
+
+    st.subheader("📈 題材趨勢圖")
+    topic_ticker = st.selectbox(
+        "選擇題材股",
+        list(topic_stocks.keys()),
+        format_func=lambda x: topic_stocks[x]["名稱"],
+        key="topic_select",
+    )
+    if topic_ticker:
+        plot_stock_chart(topic_ticker)
+
+# --- TAB 3: 金農專區 ---
+with tab3:
     st.subheader("🏦 金融股績效監控")
     financial_stocks = {
         "2881.TW": "富邦金",
@@ -330,76 +402,6 @@ with tab2:
     )
     if fin_ticker:
         plot_stock_chart(fin_ticker)
-
-# --- TAB 3: 題材專區 ---
-with tab3:
-    st.subheader("📋 題材專區")
-    topic_stocks = {
-        "3008.TW": {"名稱": "大立光", "題材": "光學鏡頭"},
-        "3406.TW": {"名稱": "玉晶光", "題材": "光學鏡頭"},
-        "2059.TW": {"名稱": "川湖", "題材": "滑軌"},
-        "3017.TW": {"名稱": "奇鋐", "題材": "散熱"},
-        "2327.TW": {"名稱": "國巨", "題材": "被動元件"},
-        "1303.TW": {"名稱": "南亞", "題材": "玻纖布 CCL"},
-        "2382.TW": {"名稱": "廣達", "題材": "伺服器"},
-        "3231.TW": {"名稱": "緯創", "題材": "伺服器"},
-        "6669.TW": {"名稱": "緯穎", "題材": "伺服器"},
-        "2408.TW": {"名稱": "南亞科", "題材": "DRAM製造"},
-        "2344.TW": {"名稱": "華邦電", "題材": "記憶體"},
-        "8299.TWO": {"名稱": "群聯", "題材": "快閃記憶體"},
-        "6488.TWO": {"名稱": "環球晶", "題材": "矽晶圓-美光"},
-        
-    }
-    topic_data = []
-
-    for sym, info_dict in topic_stocks.items():
-        metrics_dict, df = get_stock_data(sym)
-        if metrics_dict is None:
-            continue
-
-        row = {
-            "名稱": f"{sym} {info_dict['名稱']}",
-            "題材": info_dict["題材"],
-        }
-        row.update(metrics_dict)
-        topic_data.append(row)
-
-    if topic_data:
-        df_topic = pd.DataFrame(topic_data).set_index("名稱")
-        st.dataframe(
-            df_topic,
-            use_container_width=True,
-            column_config={
-                "_index": st.column_config.TextColumn(
-                    "股票名稱", width="medium"
-                ),
-                "題材": st.column_config.TextColumn("題材", width="small"),
-                "現價": st.column_config.TextColumn("現價", width="small"),
-                "狀態": st.column_config.TextColumn("狀態", width="medium"),
-                "Trailing (PE/EPS)": st.column_config.TextColumn(
-                    "Trailing PE/EPS", width="medium"
-                ),
-                "Forward (PE/EPS)": st.column_config.TextColumn(
-                    "Forward PE/EPS", width="medium"
-                ),
-                "PEG": st.column_config.TextColumn(
-                    "PEG (trail/growth)", width="small"
-                ),
-                "成長率": st.column_config.TextColumn("成長率", width="small"),
-            },
-        )
-    else:
-        st.info("正在讀取資料，請稍候...")
-
-    st.subheader("📈 題材趨勢圖")
-    topic_ticker = st.selectbox(
-        "選擇題材股",
-        list(topic_stocks.keys()),
-        format_func=lambda x: topic_stocks[x]["名稱"],
-        key="topic_select",
-    )
-    if topic_ticker:
-        plot_stock_chart(topic_ticker)
 
 # --- TAB 4: 月營收監控 ---
 with tab4:
