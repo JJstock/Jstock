@@ -377,16 +377,14 @@ with tab2:
         "2344.TW": {"名稱": "華邦電", "題材": "記憶體"},
         "8299.TWO": {"名稱": "群聯", "題材": "快閃記憶體"},
         "6488.TWO": {"名稱": "環球晶", "題材": "矽晶圓-美光"},
-        
     }
     topic_data = []
-
     for sym, info_dict in topic_stocks.items():
         metrics_dict, df = get_stock_data(sym)
         if metrics_dict is None:
             continue
-
         row = {
+            "代號": sym,                             # ← 新增：保留原始代號供比對用
             "名稱": f"{sym} {info_dict['名稱']}",
             "題材": info_dict["題材"],
         }
@@ -394,7 +392,67 @@ with tab2:
         topic_data.append(row)
 
     if topic_data:
-        df_topic = pd.DataFrame(topic_data).set_index("名稱")
+        df_topic = pd.DataFrame(topic_data)
+
+        # 合併三率三升（用代號比對 rate.csv）
+        try:
+            rate_csv_path = os.path.join(
+                os.path.dirname(os.path.abspath(__file__)), "rate.csv"
+            )
+            df_rate = None
+            last_err = None
+            for enc in ["utf-8-sig", "big5", "cp950", "utf-8"]:
+                try:
+                    df_rate = pd.read_csv(
+                        rate_csv_path, dtype=str, encoding=enc, sep=None, engine="python"
+                    )
+                    df_rate.columns = df_rate.columns.str.strip()
+                    break
+                except Exception as e:
+                    last_err = e
+                    df_rate = None
+
+            if df_rate is None:
+                raise ValueError(f"無法辨識 rate.csv 編碼：{last_err}")
+
+            code_col_in_rate = "公司代號" if "公司代號" in df_rate.columns else "代號"
+            if code_col_in_rate not in df_rate.columns:
+                raise ValueError(f"rate.csv 缺少公司代號欄位，實際欄位為：{list(df_rate.columns)}")
+            if "三率三升" not in df_rate.columns:
+                raise ValueError(f"rate.csv 缺少三率三升欄位，實際欄位為：{list(df_rate.columns)}")
+
+            df_rate["temp_merge_code"] = (
+                df_rate[code_col_in_rate]
+                .astype(str).str.strip()
+                .str.replace(r"\.(TW|TWO)$", "", regex=True)
+            )
+            df_rate_dedup = df_rate.drop_duplicates(subset="temp_merge_code", keep="first")
+
+            df_topic["temp_merge_code"] = (
+                df_topic["代號"]
+                .astype(str).str.strip()
+                .str.replace(r"\.(TW|TWO)$", "", regex=True)
+            )
+
+            df_topic = pd.merge(
+                df_topic,
+                df_rate_dedup[["temp_merge_code", "三率三升"]],
+                on="temp_merge_code",
+                how="left",
+            )
+            df_topic["三率三升"] = df_topic["三率三升"].fillna("0")
+            df_topic["三率三升"] = df_topic["三率三升"].apply(
+                lambda x: "🔥 三率三升" if str(x).strip() in ["1", "1.0", "True", "true"] else "-"
+            )
+            df_topic = df_topic.drop(columns=["temp_merge_code"])
+
+        except Exception as e:
+            st.warning(f"⚠️ 讀取 rate.csv 發生錯誤：{e}")
+            df_topic["三率三升"] = "-"
+
+        # 顯示時不需要單獨的「代號」欄位（已經併入名稱顯示了）
+        df_topic = df_topic.drop(columns=["代號"]).set_index("名稱")
+
         st.dataframe(
             df_topic,
             use_container_width=True,
@@ -405,15 +463,9 @@ with tab2:
                 "題材": st.column_config.TextColumn("題材", width="small"),
                 "現價": st.column_config.TextColumn("現價", width="small"),
                 "狀態": st.column_config.TextColumn("狀態", width="medium"),
-                "Trailing (PE/EPS)": st.column_config.TextColumn(
-                    "Trailing PE/EPS", width="medium"
-                ),
-                "Forward (PE/EPS)": st.column_config.TextColumn(
-                    "Forward PE/EPS", width="medium"
-                ),
-                "PEG": st.column_config.TextColumn(
-                    "PEG (trail/growth)", width="small"
-                ),
+                "Trailing (PE/EPS)": st.column_config.TextColumn("Trailing PE/EPS", width="medium"),
+                "Forward (PE/EPS)": st.column_config.TextColumn("Forward PE/EPS", width="medium"),
+                "PEG": st.column_config.TextColumn("PEG (trail/growth)", width="small"),
                 "成長率": st.column_config.TextColumn("成長率", width="small"),
                 "三率三升": st.column_config.TextColumn("三率三升", width="small"),
             },
