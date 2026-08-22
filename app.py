@@ -610,25 +610,22 @@ with tab3:
         "2887.TW": "台新新光金",
         "2890.TW": "永豐金",
     }
-
     finance_data = []
     for sym, name in financial_stocks.items():
         ticker = yf.Ticker(sym)
         hist = ticker.history(period="20d")
         if hist.empty:
             continue
-
         info = ticker.info if ticker.info else {}
         current_price = hist["Close"].iloc[-1]
         ma20 = hist["Close"].rolling(window=20).mean().iloc[-1]
-
         status = (
             f"⚠️低於MA20 ({ma20:.2f})"
             if current_price < ma20
             else f"✅高於MA20 ({ma20:.2f})"
         )
-
         finance_data.append({
+            "代號": sym,
             "名稱": f"{sym.replace('.TW', '')} {name}",
             "現價": f"{current_price:.2f}",
             "狀態": status,
@@ -643,9 +640,51 @@ with tab3:
         })
 
     if finance_data:
-        df_fin = pd.DataFrame(finance_data).set_index("名稱")
+        df_fin = pd.DataFrame(finance_data)
+
+        # 合併 revenue_data（三率三升、月增率、年增率、累計年增率），用代號比對
+        merge_cols = ["三率三升", "月增率(MoM%)", "年增率(YoY%)", "累計年增率(%)"]
+        revenue_df = st.session_state.get("revenue_data")
+
+        if revenue_df is not None and not revenue_df.empty and "代號" in revenue_df.columns:
+            existing_merge_cols = [c for c in merge_cols if c in revenue_df.columns]
+
+            df_fin["temp_merge_code"] = df_fin["代號"].astype(str).str.strip()
+
+            revenue_merge = revenue_df[["代號"] + existing_merge_cols].copy()
+            revenue_merge["temp_merge_code"] = revenue_merge["代號"].astype(str).str.strip()
+            revenue_merge = revenue_merge.drop_duplicates(subset="temp_merge_code", keep="first")
+
+            df_fin = pd.merge(
+                df_fin,
+                revenue_merge[["temp_merge_code"] + existing_merge_cols],
+                on="temp_merge_code",
+                how="left",
+            )
+            df_fin = df_fin.drop(columns=["temp_merge_code"])
+
+            if "三率三升" in df_fin.columns:
+                df_fin["三率三升"] = df_fin["三率三升"].fillna("-")
+        else:
+            st.warning("⚠️ 尚未取得營收資料（revenue_data），三率三升與營收欄位將顯示為空")
+
+        for col in merge_cols:
+            if col not in df_fin.columns:
+                df_fin[col] = None if col != "三率三升" else "-"
+
+        df_fin = df_fin.drop(columns=["代號"]).set_index("名稱")
+
+        def highlight_negative(val):
+            color = "red" if isinstance(val, (int, float)) and val < 0 else "black"
+            return f"color: {color}"
+
+        styled_df_fin = df_fin.style.map(
+            highlight_negative,
+            subset=["月增率(MoM%)", "年增率(YoY%)", "累計年增率(%)"],
+        )
+
         st.dataframe(
-            df_fin,
+            styled_df_fin,
             use_container_width=True,
             column_config={
                 "_index": st.column_config.TextColumn(
@@ -665,9 +704,18 @@ with tab3:
                 "殖利率": st.column_config.TextColumn(
                     "殖利率", width="small"
                 ),
+                "三率三升": st.column_config.TextColumn("三率三升", width="small"),
+                "月增率(MoM%)": st.column_config.NumberColumn(
+                    "營收MoM", format="%.2f%%", width="small"
+                ),
+                "年增率(YoY%)": st.column_config.NumberColumn(
+                    "營收YoY", format="%.2f%%", width="small"
+                ),
+                "累計年增率(%)": st.column_config.NumberColumn(
+                    "累計年增率", format="%.2f%%", width="small"
+                ),
             },
         )
-
     st.divider()
     st.subheader("📈 金融股趨勢圖")
     fin_ticker = st.selectbox(
@@ -678,11 +726,6 @@ with tab3:
     )
     if fin_ticker:
         plot_stock_chart(fin_ticker)
-
-import streamlit as st
-import pandas as pd
-import requests
-from io import StringIO
 
 # --- TAB 4: 月營收監控 ---
 with tab4:
