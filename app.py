@@ -665,8 +665,7 @@ with tab4:
     if "revenue_data" in st.session_state:
         df = st.session_state.revenue_data
 
-        st.write("### 📈 營收強勢成長股清單")
-
+        
         c1, c2, c3 = st.columns([1, 1, 1])
         with c1:
             yoy_threshold = st.slider(
