@@ -725,13 +725,11 @@ with tab3:
 
 # --- TAB 4: 月營收監控 ---
 with tab4:
-    st.write("### 📊 上市櫃營收與三率三升監控")
+    st.write("### 📊 上市櫃營收強勢成長股清單")
 
     if "revenue_data" in st.session_state and not st.session_state.revenue_data.empty:
         df = st.session_state.revenue_data
-
-        st.write("### 📈 營收強勢成長股清單")
-
+        
         c1, c2, c3 = st.columns([1, 1, 1])
         with c1:
             yoy_threshold = st.slider("年增率門檻 (%)", 0, 200, 20, step=5, key="yoy_slider")
