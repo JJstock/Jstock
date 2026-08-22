@@ -568,7 +568,7 @@ with tab4:
                         df_rate['代號'] = df_rate['代號'].astype(str).str.strip()
                         # 假設 rate.csv 中三率三升的欄位名稱叫 "三率三升"，若不同請自行修改
                         if "三率三升" in df_rate.columns:
-                            df = pd.merge(df, df_rate[['代號', '三率三升']], on="代號", how="left")
+                            df = pd.merge(df, df_rate[['公司代號', '三率三升']], on="代號", how="left")
                             df['三率三升'] = df['三率三升'].fillna("無資料")
                         else:
                             df['三率三升'] = "未提供欄位"
