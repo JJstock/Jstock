@@ -567,20 +567,32 @@ with tab4:
                         drop=True
                     )
                     
-                                               # 2. 讀取 rate.csv 並安全合併三率三升資訊
+                    # 2. 讀取 rate.csv 並安全合併三率三升資訊
                     import os
                     rate_csv_path = os.path.join(
                         os.path.dirname(os.path.abspath(__file__)), "rate.csv"
                     )
                     try:
-                        df_rate = pd.read_csv(
-                            rate_csv_path,
-                            dtype=str,
-                            encoding="utf-8-sig",
-                            sep=None,
-                            engine="python",
-                        )
-                        df_rate.columns = df_rate.columns.str.strip()
+                        df_rate = None
+                        last_err = None
+                        for enc in ["utf-8-sig", "big5", "cp950", "utf-8"]:
+                            try:
+                                df_rate = pd.read_csv(
+                                    rate_csv_path,
+                                    dtype=str,
+                                    encoding=enc,
+                                    sep=None,
+                                    engine="python",
+                                )
+                                df_rate.columns = df_rate.columns.str.strip()
+                                break
+                            except Exception as e:
+                                last_err = e
+                                df_rate = None
+                                continue
+
+                        if df_rate is None:
+                            raise ValueError(f"無法辨識 rate.csv 編碼：{last_err}")
 
                         code_col_in_rate = (
                             "公司代號" if "公司代號" in df_rate.columns else "代號"
