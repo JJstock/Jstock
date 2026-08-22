@@ -627,7 +627,6 @@ with tab3:
         "2834.TW": "台企銀",
         "2801.TW": "彰銀",
         "2812.TW": "台中銀",
-        "2838.TW": "聯邦銀",
     }
     finance_data = []
     for sym, name in financial_stocks.items():
