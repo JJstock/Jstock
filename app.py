@@ -567,26 +567,34 @@ with tab4:
                         drop=True
                     )
                     
-                           # 2. 讀取 rate.csv 並安全合併三率三升資訊
+                                               # 2. 讀取 rate.csv 並安全合併三率三升資訊
                     import os
                     rate_csv_path = os.path.join(
                         os.path.dirname(os.path.abspath(__file__)), "rate.csv"
                     )
                     try:
-                        df_rate = pd.read_csv(rate_csv_path, dtype=str, encoding="utf-8-sig")
+                        df_rate = pd.read_csv(
+                            rate_csv_path,
+                            dtype=str,
+                            encoding="utf-8-sig",
+                            sep=None,
+                            engine="python",
+                        )
+                        df_rate.columns = df_rate.columns.str.strip()
 
-                        # 尋找 rate.csv 裡代表代號的欄位名稱（支援 "公司代號" 或 "代號"）
                         code_col_in_rate = (
                             "公司代號" if "公司代號" in df_rate.columns else "代號"
                         )
 
                         if code_col_in_rate not in df_rate.columns:
-                            raise ValueError("rate.csv 缺少公司代號欄位")
+                            raise ValueError(
+                                f"rate.csv 缺少公司代號欄位，實際欄位為：{list(df_rate.columns)}"
+                            )
                         if "三率三升" not in df_rate.columns:
-                            raise ValueError("rate.csv 缺少三率三升欄位")
+                            raise ValueError(
+                                f"rate.csv 缺少三率三升欄位，實際欄位為：{list(df_rate.columns)}"
+                            )
 
-                        # 把 rate.csv 的代號清理成「純數字」，並去除重複代號
-                        # （保留第一筆，避免 merge 後列數暴增）
                         df_rate["temp_merge_code"] = (
                             df_rate[code_col_in_rate]
                             .astype(str)
@@ -597,7 +605,6 @@ with tab4:
                             subset="temp_merge_code", keep="first"
                         )
 
-                        # 把主 DataFrame 的代號清理成「純數字」做為 merge 基準
                         df["temp_merge_code"] = (
                             df["代號"]
                             .astype(str)
@@ -605,7 +612,6 @@ with tab4:
                             .str.replace(r"\.(TW|TWO)$", "", regex=True)
                         )
 
-                        # 根據純數字代號進行 left join
                         df = pd.merge(
                             df,
                             df_rate_dedup[["temp_merge_code", "三率三升"]],
@@ -613,7 +619,6 @@ with tab4:
                             how="left",
                         )
 
-                        # 將 1 轉換為圖示，0 或找不到的轉換為 "-"
                         df["三率三升"] = df["三率三升"].fillna("0")
                         df["三率三升"] = df["三率三升"].apply(
                             lambda x: "🔥 三率三升"
@@ -621,14 +626,13 @@ with tab4:
                             else "-"
                         )
 
-                        # 移除暫時用的合併欄位
                         df = df.drop(columns=["temp_merge_code"])
 
                     except FileNotFoundError:
-                        st.warning(f"⚠️ 找不到 rate.csv（預期路徑：{rate_csv_path}），三率三升欄位將顯示為 '-'")
+                        st.warning(f"⚠️ 找不到 rate.csv（預期路徑：{rate_csv_path}）")
                         df["三率三升"] = "-"
                     except Exception as e:
-                        st.warning(f"⚠️ 讀取 rate.csv 發生錯誤：{e}，三率三升欄位將顯示為 '-'")
+                        st.warning(f"⚠️ 讀取 rate.csv 發生錯誤：{e}")
                         df["三率三升"] = "-"
                         if "temp_merge_code" in df.columns:
                             df = df.drop(columns=["temp_merge_code"])
