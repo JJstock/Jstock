@@ -398,6 +398,21 @@ with st.sidebar:
             del st.session_state.my_stocks[ticker_to_delete]
             st.warning(f"已刪除 {ticker_to_delete}")
             st.rerun()
+            
+    st.markdown("---")
+    
+    st.subheader("🔄 清除快取")
+    if st.button("清除快取並重新載入", use_container_width=True):
+        st.cache_data.clear()
+        if "revenue_data" in st.session_state:
+            del st.session_state["revenue_data"]
+        st.session_state["last_cache_clear"] = pd.Timestamp.now().strftime("%Y-%m-%d %H:%M:%S")
+        st.success("✅ 快取已清除，正在重新載入...")
+        time.sleep(1)
+        st.rerun()
+
+    if "last_cache_clear" in st.session_state:
+        st.caption(f"上次清除快取：{st.session_state['last_cache_clear']}")
 
 # --- TAB 1: 主監控頁面 ---
 with tab1:
