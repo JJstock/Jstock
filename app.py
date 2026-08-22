@@ -159,13 +159,54 @@ if "my_stocks" not in st.session_state:
     }
 
 # 側邊欄：新增與刪除監控股票
+@st.cache_data
+def load_stock_names():
+    try:
+        # 請根據你 CSV 實際的檔名與編碼調整 (常見為 utf-8 或 utf-8-sig 或 big5)
+        df = pd.read_csv("name.csv", encoding="utf-8-sig")
+        return df
+    except Exception as e:
+        return None
+
+# 載入資料
+df_names = load_stock_names()
 with st.sidebar:
     st.subheader("➕ 新增監控股票")
     market_type = st.radio(
         "選擇市場", ["上市 (.TW)", "上櫃 (.TWO)"], horizontal=True
     )
-    new_ticker = st.text_input("輸入股票代號", placeholder="例如: 2330")
-    new_name = st.text_input("輸入公司名稱", placeholder="例如: 台積電")
+     # 2. 初始化 session_state 來存放輸入的代號與名稱
+    if 'input_ticker' not in st.session_state:
+        st.session_state.input_ticker = ""
+    if 'input_name' not in st.session_state:
+        st.session_state.input_name = ""
+
+    # 3. 代號輸入框（當內容改變時觸發自動搜尋）
+    def update_stock_name():
+        ticker = st.session_state.input_ticker.strip()
+        if df_names is not None and not df_names.empty and ticker:
+            # 假設 CSV 的欄位名稱叫 '代號' 與 '名稱' (請依你的 CSV 欄位名稱修改)
+            # 這裡把代號轉為字串比對，避免型態不合
+            match = df_names[df_names['公司代號'].astype(str) == ticker]
+            if not match.empty:
+                # 找到對應的第一筆名稱，自動填入
+                st.session_state.input_name = str(match.iloc[0]['公司名稱'])
+            else:
+                st.session_state.input_name = "" # 找不到則清空
+
+    new_ticker = st.text_input(
+        "輸入股票代號", 
+        placeholder="例如: 2330", 
+        key="input_ticker",
+        on_change=update_stock_name # 當輸入框按 Enter 或失焦時觸發
+    )
+    
+    # 4. 公司名稱輸入框（會自動帶入查到的結果，使用者也可以手動修改）
+    new_name = st.text_input(
+        "輸入公司名稱", 
+        placeholder="例如: 台積電", 
+        key="input_name"
+    )
 
     if st.button("加入監控清單"):
         if new_ticker and new_name:
