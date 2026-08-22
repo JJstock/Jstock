@@ -584,7 +584,7 @@ with tab4:
                             # 依據純數字代號進行 left join
                             df = pd.merge(
                                 df, 
-                                df_rate[['代號', '三率三升']].rename(columns={'代號': 'temp_merge_code'}), 
+                                df_rate[['公司代號', '三率三升']].rename(columns={'代號': 'temp_merge_code'}), 
                                 on="temp_merge_code", 
                                 how="left"
                             )
