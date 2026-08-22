@@ -470,7 +470,7 @@ with tab1:
                 "Forward (PE/EPS)": st.column_config.TextColumn("Forward PE/EPS", width="medium"),
                 "PEG": st.column_config.TextColumn("PEG (trail/growth)", width="small"),
                 "成長率": st.column_config.TextColumn("成長率", width="small"),
-                "三率三升": st.column_config.TextColumn("三率三升", width="medium"),
+                "三率三升": st.column_config.TextColumn("三率三升"),
                 "月增率(MoM%)": st.column_config.NumberColumn("月增率(MoM%)", format="%.2f%%", width="small"),
                 "年增率(YoY%)": st.column_config.NumberColumn("年增率(YoY%)", format="%.2f%%", width="small"),
                 "累計年增率(%)": st.column_config.NumberColumn("累計年增率(%)", format="%.2f%%", width="small"),
