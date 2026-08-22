@@ -667,7 +667,7 @@ with tab4:
 
         st.write("### 📈 營收強勢成長股清單")
 
-                c1, c2, c3 = st.columns([1, 1, 1])
+        c1, c2, c3 = st.columns([1, 1, 1])
         with c1:
             yoy_threshold = st.slider(
                 "年增率門檻 (%)", 0, 200, 20, step=5, key="yoy_slider"
