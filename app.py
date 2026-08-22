@@ -564,7 +564,7 @@ with tab4:
                     
                    # 2. 讀取 rate.csv 並安全合併三率三升資訊
                     try:
-                        df_rate = pd.read_csv("rate.csv", dtype=str)
+                        pd.read_csv(csv_path, dtype=str, encoding="utf-8-sig")
                         
                         # 尋找 rate.csv 裡代表代號的欄位名稱（支援 "公司代號" 或 "代號"）
                         code_col_in_rate = "公司代號" if "公司代號" in df_rate.columns else "代號"
