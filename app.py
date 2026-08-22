@@ -141,10 +141,10 @@ def load_revenue_data():
 
                 except FileNotFoundError:
                     st.warning(f"⚠️ 找不到 rate.csv（預期路徑：{rate_csv_path}）")
-                    df["三率三升"] = "-"
+                    df["三率三升"] = "找不到檔案"
                 except Exception as e:
                     st.warning(f"⚠️ 讀取 rate.csv 發生錯誤：{e}")
-                    df["三率三升"] = "-"
+                    df["三率三升"] = "讀取錯誤"
                     if "temp_merge_code" in df.columns:
                         df = df.drop(columns=["temp_merge_code"])
 
