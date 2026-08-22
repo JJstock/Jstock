@@ -463,13 +463,13 @@ with tab1:
                 "_index": st.column_config.TextColumn(
                     "股票名稱", width="medium"
                 ),
-                "現價": st.column_config.TextColumn("現價", width="small"),
+                "現價": st.column_config.TextColumn("現價"),
                 "狀態": st.column_config.TextColumn("狀態"),
                 "Trailing (PE/EPS)": st.column_config.TextColumn("Trailing PE/EPS"),
                 "CurrentYear (PE/EPS)": st.column_config.TextColumn("CurrentYear PE/EPS"),
                 "Forward (PE/EPS)": st.column_config.TextColumn("Forward PE/EPS"),
-                "PEG": st.column_config.TextColumn("PEG (trail/growth)", width="small"),
-                "成長率": st.column_config.TextColumn("成長率", width="small"),
+                "PEG": st.column_config.TextColumn("PEG (trail/growth)"),
+                "成長率": st.column_config.TextColumn("成長率"),
                 "三率三升": st.column_config.TextColumn("三率三升"),
                 "月增率(MoM%)": st.column_config.NumberColumn("月增率(MoM%)", format="%.2f%%", width="small"),
                 "年增率(YoY%)": st.column_config.NumberColumn("年增率(YoY%)", format="%.2f%%", width="small"),
