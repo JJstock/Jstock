@@ -415,6 +415,7 @@ with tab2:
                     "PEG (trail/growth)", width="small"
                 ),
                 "成長率": st.column_config.TextColumn("成長率", width="small"),
+                "三率三升": st.column_config.TextColumn("三率三升", width="small"),
             },
         )
     else:
