@@ -453,7 +453,7 @@ with tab1:
 
         styled_df_final = df_final.style.map(
             highlight_negative,
-            subset=["月增率(MoM%)", "年增率(YoY%)", "累計年增率(%)"],
+            subset=["成長率","月增率(MoM%)", "年增率(YoY%)", "累計年增率(%)"],
         )
 
         st.dataframe(
