@@ -406,13 +406,15 @@ with st.sidebar:
         st.cache_data.clear()
         if "revenue_data" in st.session_state:
             del st.session_state["revenue_data"]
-        st.session_state["last_cache_clear"] = pd.Timestamp.now().strftime("%Y-%m-%d %H:%M:%S")
+        st.session_state["last_cache_clear"] = pd.Timestamp.now(tz="Asia/Taipei").strftime(
+            "%Y-%m-%d %H:%M:%S"
+        )
         st.success("✅ 快取已清除，正在重新載入...")
         time.sleep(1)
         st.rerun()
 
     if "last_cache_clear" in st.session_state:
-        st.caption(f"上次清除快取：{st.session_state['last_cache_clear']}")
+        st.caption(f"上次清除快取：{st.session_state['last_cache_clear']} (台灣時間UTC+8)")
 
 # --- TAB 1: 主監控頁面 ---
 with tab1:
