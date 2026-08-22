@@ -447,8 +447,17 @@ with tab1:
         # 顯示時不需要單獨的「代號」欄位（已經併入名稱顯示了）
         df_final = df_final.drop(columns=["代號"]).set_index("名稱")
 
+        def highlight_negative(val):
+            color = "red" if isinstance(val, (int, float)) and val < 0 else "black"
+            return f"color: {color}"
+
+        styled_df_final = df_final.style.map(
+            highlight_negative,
+            subset=["月增率(MoM%)", "年增率(YoY%)", "累計年增率(%)"],
+        )
+
         st.dataframe(
-            df_final,
+            styled_df_final,
             use_container_width=True,
             column_config={
                 "_index": st.column_config.TextColumn(
