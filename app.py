@@ -454,7 +454,7 @@ from io import StringIO
 
 # --- TAB 4: 月營收監控 ---
 with tab4:
-    st.write("### 📊 上市櫃營收與三率三升監控")
+    st.write("### 📊 上市櫃營收與三率三升清單")
 
     def read_twse_csv_from_bytes(content_bytes):
         last_err = None
