@@ -562,10 +562,16 @@ with tab4:
                         drop=True
                     )
                     
-                    # 2. 讀取 rate.csv 並安全合併三率三升資訊 (使用相對路徑)
+                    # 2. 讀取 rate.csv 並安全合併三率三升資訊
                     try:
-                        # 直接讀取同目錄下的 rate.csv
-                        df_rate = pd.read_csv("rate.csv", dtype=str, encoding="utf-8-sig")
+                        import os
+                        
+                        # 取得絕對路徑，確保一定找得到 rate.csv
+                        current_dir = os.path.dirname(os.path.abspath(__file__))
+                        csv_path = os.path.join(current_dir, "rate.csv")
+                        
+                        # 讀取 rate.csv（使用 utf-8-sig 避免編碼問題）
+                        df_rate = pd.read_csv(csv_path, dtype=str, encoding="utf-8-sig")
                         
                         # 尋找 rate.csv 裡代表代號的欄位名稱（支援 "公司代號" 或 "代號"）
                         code_col_in_rate = "公司代號" if "公司代號" in df_rate.columns else "代號"
@@ -608,7 +614,7 @@ with tab4:
                             df = df.drop(columns=['temp_merge_code'])
                             
                     except Exception as e:
-                        df['三率三升'] = "-"
+                        df['三率三升'] = "?"
 
                     # 3. 調整欄位順序：確保「三率三升」緊跟在「累計年增率(%)」後面
                     base_cols = ["代號", "名稱", "月增率(MoM%)", "年增率(YoY%)", "累計年增率(%)", "三率三升"]
