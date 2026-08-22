@@ -462,7 +462,7 @@ with tab1:
             column_config={
                 "_index": st.column_config.TextColumn("股票名稱"),
                 "現價": st.column_config.TextColumn("現價"),
-                "狀態": st.column_config.TextColumn("狀態"),
+                "狀態": st.column_config.TextColumn("狀態", width="medium"),
                 "Trailing (PE/EPS)": st.column_config.TextColumn("Trailing PE/EPS"),
                 "CurrentYear (PE/EPS)": st.column_config.TextColumn("CurrentYear PE/EPS"),
                 "Forward (PE/EPS)": st.column_config.TextColumn("Forward PE/EPS"),
