@@ -449,7 +449,7 @@ with tab3:
 
 # --- TAB 4: 月營收監控 ---
 with tab4:
-    st.write("### 📊 上市櫃營收監控")
+    st.write("### 📊 上市櫃營收與三率三升監控")
 
     def read_twse_csv_from_bytes(content_bytes):
         last_err = None
@@ -507,17 +507,9 @@ with tab4:
             else pd.DataFrame()
         )
 
-    col1, col2 = st.columns([1, 3])
-    with col1:
-        sync_clicked = st.button("🔄 同步最新營收資料", key="sync_revenue_btn")
-    with col2:
-        if "revenue_data" in st.session_state:
-            st.caption(
-                f"✅ 目前已載入 {len(st.session_state.revenue_data)} 筆資料"
-            )
-
-    if sync_clicked:
-        with st.spinner("正在下載並解析資料..."):
+    # 省略按鈕，直接自動載入資料並存入 session_state
+    if "revenue_data" not in st.session_state:
+        with st.spinner("正在自動載入與解析營收資料..."):
             try:
                 raw_df = fetch_and_merge_github_data()
 
@@ -530,10 +522,6 @@ with tab4:
                         "累計營業收入-前期比較增減(%)": "累計年增率(%)",
                     }
                     df = raw_df.rename(columns=mapping)
-
-                    if "代號" not in df.columns:
-                        st.error("找不到 '代號' 欄位，請檢查 CSV 欄位名稱。")
-                        st.stop()
 
                     cols_to_keep = [
                         "代號",
@@ -573,17 +561,30 @@ with tab4:
                     df = df.drop_duplicates(subset="代號", keep="first").reset_index(
                         drop=True
                     )
+                    
+                    # 嘗試讀取 rate.csv 並合併三率三升資訊
+                    try:
+                        df_rate = pd.read_csv("rate.csv", dtype=str)
+                        df_rate['代號'] = df_rate['代號'].astype(str).str.strip()
+                        # 假設 rate.csv 中三率三升的欄位名稱叫 "三率三升"，若不同請自行修改
+                        if "三率三升" in df_rate.columns:
+                            df = pd.merge(df, df_rate[['代號', '三率三升']], on="代號", how="left")
+                            df['三率三升'] = df['三率三升'].fillna("無資料")
+                        else:
+                            df['三率三升'] = "未提供欄位"
+                    except Exception:
+                        # 若找不到 rate.csv 則補上預設值，避免程式崩潰
+                        df['三率三升'] = "無rate.csv"
+
                     st.session_state.revenue_data = df
-                    st.success(f"成功載入！共 {len(df)} 筆公司資料。")
                 else:
                     st.error("未能讀取任何數據。")
             except Exception as e:
-                st.error(f"同步過程發生錯誤：{e}")
+                st.error(f"自動載入過程發生錯誤：{e}")
 
     if "revenue_data" in st.session_state:
         df = st.session_state.revenue_data
 
-        st.divider()
         st.write("### 📈 營收強勢成長股清單")
 
         c1, c2 = st.columns(2)
@@ -611,7 +612,7 @@ with tab4:
         )
 
         def highlight_negative(val):
-            color = "red" if val < 0 else "black"
+            color = "red" if isinstance(val, (int, float)) and val < 0 else "black"
             return f"color: {color}"
 
         styled_df = strong_growth.style.map(
@@ -640,8 +641,7 @@ with tab4:
             mime="text/csv",
         )
     else:
-        st.info("👆 請先點擊上方按鈕載入資料")
-
+        st.info("⏳ 正在初始化資料，請稍候...")
 
 # --- TAB 5: 重訊查詢 ---
 def fetch_twse_news():
