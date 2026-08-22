@@ -16,6 +16,154 @@ import os
 st.set_page_config(page_title="Jstok股價監控", layout="wide")
 st.title("JStok 📊 MA20+60 與財報監控")
 
+#讀取營收及三率三升
+def read_twse_csv_from_bytes(content_bytes):
+    last_err = None
+    for enc in ["utf-8-sig", "big5", "cp950"]:
+        for header_row in [0, 1]:
+            try:
+                decoded_text = content_bytes.decode(enc)
+                tmp = pd.read_csv(StringIO(decoded_text), header=header_row)
+                tmp.columns = tmp.columns.str.strip().str.replace("\u3000", "", regex=False)
+                if "公司代號" in tmp.columns:
+                    return tmp
+            except Exception as e:
+                last_err = e
+                continue
+    raise ValueError(f"無法辨識檔案格式（已嘗試多種編碼與標題列位置）：{last_err}")
+
+
+@st.cache_data(ttl=3600)
+def fetch_and_merge_github_data():
+    sources = [
+        {"url": "https://raw.githubusercontent.com/JJstock/Jstock/refs/heads/main/TW.csv", "suffix": ".TW"},
+        {"url": "https://raw.githubusercontent.com/JJstock/Jstock/refs/heads/main/TWO.csv", "suffix": ".TWO"},
+    ]
+    all_dfs = []
+    for src in sources:
+        try:
+            response = requests.get(src["url"], timeout=15)
+            response.raise_for_status()
+            df = read_twse_csv_from_bytes(response.content)
+            if "公司代號" in df.columns:
+                df["公司代號"] = df["公司代號"].astype(str).str.strip() + src["suffix"]
+            all_dfs.append(df)
+        except Exception as e:
+            st.warning(f"讀取 {src['url']} 失敗: {e}")
+    return pd.concat(all_dfs, ignore_index=True) if all_dfs else pd.DataFrame()
+
+
+def load_revenue_data():
+    """把 Tab4 原本的資料處理邏輯包成一個函式，供全域先行呼叫。"""
+    if "revenue_data" in st.session_state:
+        return  # 已經載入過，不重複執行
+
+    with st.spinner("正在自動載入與解析營收資料..."):
+        try:
+            raw_df = fetch_and_merge_github_data()
+
+            if not raw_df.empty:
+                mapping = {
+                    "公司代號": "代號",
+                    "公司名稱": "名稱",
+                    "營業收入-上月比較增減(%)": "月增率(MoM%)",
+                    "營業收入-去年同月增減(%)": "年增率(YoY%)",
+                    "累計營業收入-前期比較增減(%)": "累計年增率(%)",
+                }
+                df = raw_df.rename(columns=mapping)
+
+                cols_to_keep = ["代號", "名稱", "月增率(MoM%)", "年增率(YoY%)", "累計年增率(%)"]
+                df = df[[c for c in cols_to_keep if c in df.columns]]
+
+                code_numeric_part = (
+                    df["代號"].astype(str).str.replace(r"\.(TW|TWO)$", "", regex=True)
+                )
+                df = df[pd.to_numeric(code_numeric_part, errors="coerce").notna()]
+
+                for col in ["月增率(MoM%)", "年增率(YoY%)", "累計年增率(%)"]:
+                    if col in df.columns:
+                        df[col] = (
+                            df[col].astype(str).str.strip()
+                            .str.replace(",", "", regex=False)
+                            .replace(r"^-+$", "0", regex=True)
+                        )
+                        df[col] = pd.to_numeric(df[col], errors="coerce")
+
+                df = df.drop_duplicates(subset="代號", keep="first").reset_index(drop=True)
+
+                # 讀取 rate.csv 並安全合併三率三升資訊
+                rate_csv_path = os.path.join(
+                    os.path.dirname(os.path.abspath(__file__)), "rate.csv"
+                )
+                try:
+                    df_rate = None
+                    last_err = None
+                    for enc in ["utf-8-sig", "big5", "cp950", "utf-8"]:
+                        try:
+                            df_rate = pd.read_csv(
+                                rate_csv_path, dtype=str, encoding=enc, sep=None, engine="python"
+                            )
+                            df_rate.columns = df_rate.columns.str.strip()
+                            break
+                        except Exception as e:
+                            last_err = e
+                            df_rate = None
+
+                    if df_rate is None:
+                        raise ValueError(f"無法辨識 rate.csv 編碼：{last_err}")
+
+                    code_col_in_rate = "公司代號" if "公司代號" in df_rate.columns else "代號"
+                    if code_col_in_rate not in df_rate.columns:
+                        raise ValueError(f"rate.csv 缺少公司代號欄位，實際欄位為：{list(df_rate.columns)}")
+                    if "三率三升" not in df_rate.columns:
+                        raise ValueError(f"rate.csv 缺少三率三升欄位，實際欄位為：{list(df_rate.columns)}")
+
+                    df_rate["temp_merge_code"] = (
+                        df_rate[code_col_in_rate].astype(str).str.strip()
+                        .str.replace(r"\.(TW|TWO)$", "", regex=True)
+                    )
+                    df_rate_dedup = df_rate.drop_duplicates(subset="temp_merge_code", keep="first")
+
+                    df["temp_merge_code"] = (
+                        df["代號"].astype(str).str.strip()
+                        .str.replace(r"\.(TW|TWO)$", "", regex=True)
+                    )
+
+                    df = pd.merge(
+                        df, df_rate_dedup[["temp_merge_code", "三率三升"]],
+                        on="temp_merge_code", how="left",
+                    )
+                    df["三率三升"] = df["三率三升"].fillna("0")
+                    df["三率三升"] = df["三率三升"].apply(
+                        lambda x: "🔥 三率三升" if str(x).strip() in ["1", "1.0", "True", "true"] else "-"
+                    )
+                    df = df.drop(columns=["temp_merge_code"])
+
+                except FileNotFoundError:
+                    st.warning(f"⚠️ 找不到 rate.csv（預期路徑：{rate_csv_path}）")
+                    df["三率三升"] = "-"
+                except Exception as e:
+                    st.warning(f"⚠️ 讀取 rate.csv 發生錯誤：{e}")
+                    df["三率三升"] = "-"
+                    if "temp_merge_code" in df.columns:
+                        df = df.drop(columns=["temp_merge_code"])
+
+                base_cols = ["代號", "名稱", "月增率(MoM%)", "年增率(YoY%)", "累計年增率(%)"]
+                existing_base = [c for c in base_cols if c in df.columns]
+                other_cols = [c for c in df.columns if c not in existing_base and c != "三率三升"]
+                df = df[existing_base + other_cols + (["三率三升"] if "三率三升" in df.columns else [])]
+
+                st.session_state.revenue_data = df
+            else:
+                st.session_state.revenue_data = pd.DataFrame()
+                st.error("未能讀取任何數據。")
+        except Exception as e:
+            st.session_state.revenue_data = pd.DataFrame()
+            st.error(f"自動載入過程發生錯誤：{e}")
+
+
+# 🔑 關鍵：在所有 tab 定義之前，先呼叫一次，確保 revenue_data 一定準備好
+load_revenue_data()
 
 # --- 繪圖函式 ---
 def plot_stock_chart(ticker):
@@ -571,235 +719,24 @@ from io import StringIO
 
 # --- TAB 4: 月營收監控 ---
 with tab4:
-    st.write("### 📊 上市櫃營收與三率三升清單")
+    st.write("### 📊 上市櫃營收與三率三升監控")
 
-    def read_twse_csv_from_bytes(content_bytes):
-        last_err = None
-        for enc in ["utf-8-sig", "big5", "cp950"]:
-            for header_row in [0, 1]:
-                try:
-                    decoded_text = content_bytes.decode(enc)
-                    tmp = pd.read_csv(
-                        StringIO(decoded_text), header=header_row
-                    )
-                    tmp.columns = (
-                        tmp.columns.str.strip().str.replace(
-                            "\u3000", "", regex=False
-                        )
-                    )
-                    if "公司代號" in tmp.columns:
-                        return tmp
-                except Exception as e:
-                    last_err = e
-                    continue
-        raise ValueError(
-            f"無法辨識檔案格式（已嘗試多種編碼與標題列位置）：{last_err}"
-        )
-
-    @st.cache_data(ttl=3600)
-    def fetch_and_merge_github_data():
-        sources = [
-            {
-                "url": "https://raw.githubusercontent.com/JJstock/Jstock/refs/heads/main/TW.csv",
-                "suffix": ".TW",
-            },
-            {
-                "url": "https://raw.githubusercontent.com/JJstock/Jstock/refs/heads/main/TWO.csv",
-                "suffix": ".TWO",
-            },
-        ]
-        all_dfs = []
-        for src in sources:
-            try:
-                response = requests.get(src["url"], timeout=15)
-                response.raise_for_status()
-                df = read_twse_csv_from_bytes(response.content)
-
-                if "公司代號" in df.columns:
-                    df["公司代號"] = (
-                        df["公司代號"].astype(str).str.strip() + src["suffix"]
-                    )
-
-                all_dfs.append(df)
-            except Exception as e:
-                st.warning(f"讀取 {src['url']} 失敗: {e}")
-        return (
-            pd.concat(all_dfs, ignore_index=True)
-            if all_dfs
-            else pd.DataFrame()
-        )
-
-    if "revenue_data" not in st.session_state:
-        with st.spinner("正在自動載入與解析營收資料..."):
-            try:
-                raw_df = fetch_and_merge_github_data()
-
-                if not raw_df.empty:
-                    mapping = {
-                        "公司代號": "代號",
-                        "公司名稱": "名稱",
-                        "營業收入-上月比較增減(%)": "月增率(MoM%)",
-                        "營業收入-去年同月增減(%)": "年增率(YoY%)",
-                        "累計營業收入-前期比較增減(%)": "累計年增率(%)",
-                    }
-                    df = raw_df.rename(columns=mapping)
-
-                    # 1. 抓取欄位，確保包含累計年增率(%)
-                    cols_to_keep = [
-                        "代號",
-                        "名稱",
-                        "月增率(MoM%)",
-                        "年增率(YoY%)",
-                        "累計年增率(%)",
-                    ]
-                    df = df[[c for c in cols_to_keep if c in df.columns]]
-
-                    code_numeric_part = (
-                        df["代號"]
-                        .astype(str)
-                        .str.replace(r"\.(TW|TWO)$", "", regex=True)
-                    )
-                    df = df[
-                        pd.to_numeric(
-                            code_numeric_part, errors="coerce"
-                        ).notna()
-                    ]
-
-                    for col in [
-                        "月增率(MoM%)",
-                        "年增率(YoY%)",
-                        "累計年增率(%)",
-                    ]:
-                        if col in df.columns:
-                            df[col] = (
-                                df[col]
-                                .astype(str)
-                                .str.strip()
-                                .str.replace(",", "", regex=False)
-                                .replace(r"^-+$", "0", regex=True)
-                            )
-                            df[col] = pd.to_numeric(df[col], errors="coerce")
-
-                    df = df.drop_duplicates(subset="代號", keep="first").reset_index(
-                        drop=True
-                    )
-                    
-                    # 2. 讀取 rate.csv 並安全合併三率三升資訊
-                    rate_csv_path = os.path.join(
-                        os.path.dirname(os.path.abspath(__file__)), "rate.csv"
-                    )
-                    try:
-                        df_rate = None
-                        last_err = None
-                        for enc in ["utf-8-sig", "big5", "cp950", "utf-8"]:
-                            try:
-                                df_rate = pd.read_csv(
-                                    rate_csv_path,
-                                    dtype=str,
-                                    encoding=enc,
-                                    sep=None,
-                                    engine="python",
-                                )
-                                df_rate.columns = df_rate.columns.str.strip()
-                                break
-                            except Exception as e:
-                                last_err = e
-                                df_rate = None
-                                continue
-
-                        if df_rate is None:
-                            raise ValueError(f"無法辨識 rate.csv 編碼：{last_err}")
-
-                        code_col_in_rate = (
-                            "公司代號" if "公司代號" in df_rate.columns else "代號"
-                        )
-
-                        if code_col_in_rate not in df_rate.columns:
-                            raise ValueError(
-                                f"rate.csv 缺少公司代號欄位，實際欄位為：{list(df_rate.columns)}"
-                            )
-                        if "三率三升" not in df_rate.columns:
-                            raise ValueError(
-                                f"rate.csv 缺少三率三升欄位，實際欄位為：{list(df_rate.columns)}"
-                            )
-
-                        df_rate["temp_merge_code"] = (
-                            df_rate[code_col_in_rate]
-                            .astype(str)
-                            .str.strip()
-                            .str.replace(r"\.(TW|TWO)$", "", regex=True)
-                        )
-                        df_rate_dedup = df_rate.drop_duplicates(
-                            subset="temp_merge_code", keep="first"
-                        )
-
-                        df["temp_merge_code"] = (
-                            df["代號"]
-                            .astype(str)
-                            .str.strip()
-                            .str.replace(r"\.(TW|TWO)$", "", regex=True)
-                        )
-
-                        df = pd.merge(
-                            df,
-                            df_rate_dedup[["temp_merge_code", "三率三升"]],
-                            on="temp_merge_code",
-                            how="left",
-                        )
-
-                        df["三率三升"] = df["三率三升"].fillna("0")
-                        df["三率三升"] = df["三率三升"].apply(
-                            lambda x: "🔥 三率三升"
-                            if str(x).strip() in ["1", "1.0", "True", "true"]
-                            else "-"
-                        )
-
-                        df = df.drop(columns=["temp_merge_code"])
-
-                    except FileNotFoundError:
-                        st.warning(f"⚠️ 找不到 rate.csv（預期路徑：{rate_csv_path}）")
-                        df["三率三升"] = "-"
-                    except Exception as e:
-                        st.warning(f"⚠️ 讀取 rate.csv 發生錯誤：{e}")
-                        df["三率三升"] = "-"
-                        if "temp_merge_code" in df.columns:
-                            df = df.drop(columns=["temp_merge_code"])
-
-                    # 3. 調整欄位順序：確保「三率三升」放在最後一欄
-                    base_cols = ["代號", "名稱", "月增率(MoM%)", "年增率(YoY%)", "累計年增率(%)"]
-                    existing_base = [c for c in base_cols if c in df.columns]
-                    # 將三率三升固定在最後
-                    other_cols = [c for c in df.columns if c not in existing_base and c != "三率三升"]
-                    df = df[existing_base + other_cols + (["三率三升"] if "三率三升" in df.columns else [])]
-
-                    st.session_state.revenue_data = df
-                else:
-                    st.error("未能讀取任何數據。")
-            except Exception as e:
-                st.error(f"自動載入過程發生錯誤：{e}")
-
-    if "revenue_data" in st.session_state:
+    if "revenue_data" in st.session_state and not st.session_state.revenue_data.empty:
         df = st.session_state.revenue_data
 
-        
+        st.write("### 📈 營收強勢成長股清單")
+
         c1, c2, c3 = st.columns([1, 1, 1])
         with c1:
-            yoy_threshold = st.slider(
-                "年增率門檻 (%)", 0, 200, 20, step=5, key="yoy_slider"
-            )
+            yoy_threshold = st.slider("年增率門檻 (%)", 0, 200, 20, step=5, key="yoy_slider")
         with c2:
-            mom_threshold = st.slider(
-                "月增率門檻 (%)", -50, 100, 5, step=5, key="mom_slider"
-            )
+            mom_threshold = st.slider("月增率門檻 (%)", -50, 100, 5, step=5, key="mom_slider")
         with c3:
-            st.write("")  # 對齊 slider 高度用的留白
-            only_triple_rise = st.checkbox(
-                "🔥 只顯示三率三升", value=False, key="triple_rise_checkbox"
-            )
+            st.write("")
+            only_triple_rise = st.checkbox("🔥 只顯示三率三升", value=False, key="triple_rise_checkbox")
 
         strong_growth = df[
-            (df["年增率(YoY%)"] > yoy_threshold)
-            & (df["月增率(MoM%)"] > mom_threshold)
+            (df["年增率(YoY%)"] > yoy_threshold) & (df["月增率(MoM%)"] > mom_threshold)
         ].dropna(subset=["年增率(YoY%)"])
 
         if only_triple_rise:
@@ -807,33 +744,22 @@ with tab4:
 
         strong_growth = strong_growth.sort_values("年增率(YoY%)", ascending=False)
 
-        st.caption(
-            f"共符合 {len(strong_growth)} 筆（年增率 > {yoy_threshold}% 且 月增率 >"
-            f" {mom_threshold}%）"
-        )
+        st.caption(f"共符合 {len(strong_growth)} 筆（年增率 > {yoy_threshold}% 且 月增率 > {mom_threshold}%）")
 
         def highlight_negative(val):
             color = "red" if isinstance(val, (int, float)) and val < 0 else "black"
             return f"color: {color}"
 
-        styled_df = strong_growth.style.map(
-            highlight_negative, subset=["年增率(YoY%)", "月增率(MoM%)"]
-        )
+        styled_df = strong_growth.style.map(highlight_negative, subset=["年增率(YoY%)", "月增率(MoM%)"])
 
         st.dataframe(
             styled_df,
             use_container_width=True,
             hide_index=True,
             column_config={
-                "年增率(YoY%)": st.column_config.NumberColumn(
-                    "年增率(YoY%)", format="%.2f%%"
-                ),
-                "月增率(MoM%)": st.column_config.NumberColumn(
-                    "月增率(MoM%)", format="%.2f%%"
-                ),
-                "累計年增率(%)": st.column_config.NumberColumn(
-                    "累計年增率(%)", format="%.2f%%"
-                ),
+                "年增率(YoY%)": st.column_config.NumberColumn("年增率(YoY%)", format="%.2f%%"),
+                "月增率(MoM%)": st.column_config.NumberColumn("月增率(MoM%)", format="%.2f%%"),
+                "累計年增率(%)": st.column_config.NumberColumn("累計年增率(%)", format="%.2f%%"),
             },
         )
 
@@ -845,7 +771,7 @@ with tab4:
             mime="text/csv",
         )
     else:
-        st.info("⏳ 正在初始化資料，請稍候...")
+        st.info("⏳ 資料載入失敗或為空，請重新整理頁面。")
 
 # --- TAB 5: 重訊查詢 ---
 def fetch_twse_news():
