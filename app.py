@@ -562,16 +562,41 @@ with tab4:
                         drop=True
                     )
                     
-                    # 2. 讀取 rate.csv 並合併三率三升資訊
+                   # 2. 讀取 rate.csv 並安全合併三率三升資訊
                     try:
                         df_rate = pd.read_csv("rate.csv", dtype=str)
-                        df_rate['代號'] = df_rate['代號'].astype(str).str.strip()
+                        # 清理 rate.csv 的代號欄位，去除空白與可能帶有的 .TW/.TWO
+                        df_rate['代號'] = (
+                            df_rate['代號']
+                            .astype(str)
+                            .str.strip()
+                            .str.replace(r"\.(TW|TWO)$", "", regex=True)
+                        )
+                        
+                        # 建立一個乾淨的純數字代號欄位用來做 merge 基準
+                        df['temp_merge_code'] = (
+                            df['代號']
+                            .astype(str)
+                            .str.replace(r"\.(TW|TWO)$", "", regex=True)
+                        )
+                        
                         if "三率三升" in df_rate.columns:
-                            df = pd.merge(df, df_rate[['公司代號', '三率三升']], on="代號", how="left")
+                            # 依據純數字代號進行 left join
+                            df = pd.merge(
+                                df, 
+                                df_rate[['代號', '三率三升']].rename(columns={'代號': 'temp_merge_code'}), 
+                                on="temp_merge_code", 
+                                how="left"
+                            )
                             df['三率三升'] = df['三率三升'].fillna("無資料")
                         else:
                             df['三率三升'] = "未提供欄位"
-                    except Exception:
+                            
+                        # 移除暫時的合併欄位
+                        if 'temp_merge_code' in df.columns:
+                            df = df.drop(columns=['temp_merge_code'])
+                            
+                    except Exception as e:
                         df['三率三升'] = "無rate.csv"
 
                     # 3. 調整欄位順序：確保「三率三升」緊跟在「累計年增率(%)」後面
