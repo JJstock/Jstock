@@ -565,15 +565,19 @@ with tab4:
                    # 2. 讀取 rate.csv 並安全合併三率三升資訊
                     try:
                         df_rate = pd.read_csv("rate.csv", dtype=str)
+                        
+                        # 尋找 rate.csv 裡代表代號的欄位名稱（支援 "公司代號" 或 "代號"）
+                        code_col_in_rate = "公司代號" if "公司代號" in df_rate.columns else "代號"
+                        
                         # 清理 rate.csv 的代號欄位，去除空白與可能帶有的 .TW/.TWO
-                        df_rate['代號'] = (
-                            df_rate['代號']
+                        df_rate['temp_merge_code'] = (
+                            df_rate[code_col_in_rate]
                             .astype(str)
                             .str.strip()
                             .str.replace(r"\.(TW|TWO)$", "", regex=True)
                         )
                         
-                        # 建立一個乾淨的純數字代號欄位用來做 merge 基準
+                        # 建立主 DataFrame 的純數字代號欄位用來做 merge 基準
                         df['temp_merge_code'] = (
                             df['代號']
                             .astype(str)
@@ -584,13 +588,18 @@ with tab4:
                             # 依據純數字代號進行 left join
                             df = pd.merge(
                                 df, 
-                                df_rate[['公司代號', '三率三升']].rename(columns={'代號': 'temp_merge_code'}), 
+                                df_rate[['temp_merge_code', '三率三升']], 
                                 on="temp_merge_code", 
                                 how="left"
                             )
-                            df['三率三升'] = df['三率三升'].fillna("無資料")
+                            
+                            # 將 1 轉換為圖示/文字，0 或空值轉換為空白或無
+                            df['三率三升'] = df['三率三升'].fillna("0")
+                            df['三率三升'] = df['三率三升'].apply(
+                                lambda x: "🔥 三率三升" if str(x).strip() in ["1", "1.0", "True"] else "-"
+                            )
                         else:
-                            df['三率三升'] = "未提供欄位"
+                            df['三率三升'] = "欄位錯誤"
                             
                         # 移除暫時的合併欄位
                         if 'temp_merge_code' in df.columns:
