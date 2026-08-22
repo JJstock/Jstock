@@ -467,7 +467,7 @@ with tab1:
                 "CurrentYear (PE/EPS)": st.column_config.TextColumn("CurrentYear PE/EPS"),
                 "Forward (PE/EPS)": st.column_config.TextColumn("Forward PE/EPS"),
                 "PEG": st.column_config.TextColumn("PEG (trail/growth)"),
-                "成長率": st.column_config.TextColumn("成長率"),
+                "成長率": st.column_config.NumberColumn("成長率", format="%.2f%%", width="small"),
                 "三率三升": st.column_config.TextColumn("三率三升"),
                 "月增率(MoM%)": st.column_config.NumberColumn("營收MoM", format="%.2f%%", width="small"),
                 "年增率(YoY%)": st.column_config.NumberColumn("營收YoY", format="%.2f%%", width="small"),
