@@ -507,7 +507,6 @@ with tab4:
             else pd.DataFrame()
         )
 
-    # 省略按鈕，直接自動載入資料並存入 session_state
     if "revenue_data" not in st.session_state:
         with st.spinner("正在自動載入與解析營收資料..."):
             try:
@@ -523,6 +522,7 @@ with tab4:
                     }
                     df = raw_df.rename(columns=mapping)
 
+                    # 1. 抓取欄位，確保包含累計年增率(%)
                     cols_to_keep = [
                         "代號",
                         "名稱",
@@ -562,19 +562,24 @@ with tab4:
                         drop=True
                     )
                     
-                    # 嘗試讀取 rate.csv 並合併三率三升資訊
+                    # 2. 讀取 rate.csv 並合併三率三升資訊
                     try:
                         df_rate = pd.read_csv("rate.csv", dtype=str)
                         df_rate['代號'] = df_rate['代號'].astype(str).str.strip()
-                        # 假設 rate.csv 中三率三升的欄位名稱叫 "三率三升"，若不同請自行修改
                         if "三率三升" in df_rate.columns:
                             df = pd.merge(df, df_rate[['公司代號', '三率三升']], on="代號", how="left")
                             df['三率三升'] = df['三率三升'].fillna("無資料")
                         else:
                             df['三率三升'] = "未提供欄位"
                     except Exception:
-                        # 若找不到 rate.csv 則補上預設值，避免程式崩潰
                         df['三率三升'] = "無rate.csv"
+
+                    # 3. 調整欄位順序：確保「三率三升」緊跟在「累計年增率(%)」後面
+                    base_cols = ["代號", "名稱", "月增率(MoM%)", "年增率(YoY%)", "累計年增率(%)", "三率三升"]
+                    existing_cols = [c for c in base_cols if c in df.columns]
+                    # 把可能漏掉的其他原始欄位補在後面
+                    other_cols = [c for c in df.columns if c not in existing_cols]
+                    df = df[existing_cols + other_cols]
 
                     st.session_state.revenue_data = df
                 else:
@@ -629,6 +634,9 @@ with tab4:
                 ),
                 "月增率(MoM%)": st.column_config.NumberColumn(
                     "月增率(MoM%)", format="%.2f%%"
+                ),
+                "累計年增率(%)": st.column_config.NumberColumn(
+                    "累計年增率(%)", format="%.2f%%"
                 ),
             },
         )
