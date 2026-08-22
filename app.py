@@ -688,10 +688,10 @@ with tab3:
             use_container_width=True,
             column_config={
                 "_index": st.column_config.TextColumn(
-                    "股票名稱", width="medium"
+                    "股票名稱"
                 ),
                 "現價": st.column_config.TextColumn("現價", width="small"),
-                "狀態": st.column_config.TextColumn("狀態", width="small"),
+                "狀態": st.column_config.TextColumn("狀態"),
                 "Trailing (PE/EPS)": st.column_config.TextColumn(
                     "Trailing (PE/EPS)", width="medium"
                 ),
