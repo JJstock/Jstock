@@ -667,7 +667,7 @@ with tab4:
 
         st.write("### 📈 營收強勢成長股清單")
 
-        c1, c2 = st.columns(2)
+                c1, c2, c3 = st.columns([1, 1, 1])
         with c1:
             yoy_threshold = st.slider(
                 "年增率門檻 (%)", 0, 200, 20, step=5, key="yoy_slider"
@@ -676,15 +676,21 @@ with tab4:
             mom_threshold = st.slider(
                 "月增率門檻 (%)", -50, 100, 5, step=5, key="mom_slider"
             )
+        with c3:
+            st.write("")  # 對齊 slider 高度用的留白
+            only_triple_rise = st.checkbox(
+                "🔥 只顯示三率三升", value=False, key="triple_rise_checkbox"
+            )
 
-        strong_growth = (
-            df[
-                (df["年增率(YoY%)"] > yoy_threshold)
-                & (df["月增率(MoM%)"] > mom_threshold)
-            ]
-            .dropna(subset=["年增率(YoY%)"])
-            .sort_values("年增率(YoY%)", ascending=False)
-        )
+        strong_growth = df[
+            (df["年增率(YoY%)"] > yoy_threshold)
+            & (df["月增率(MoM%)"] > mom_threshold)
+        ].dropna(subset=["年增率(YoY%)"])
+
+        if only_triple_rise:
+            strong_growth = strong_growth[strong_growth["三率三升"] == "🔥 三率三升"]
+
+        strong_growth = strong_growth.sort_values("年增率(YoY%)", ascending=False)
 
         st.caption(
             f"共符合 {len(strong_growth)} 筆（年增率 > {yoy_threshold}% 且 月增率 >"
