@@ -11,6 +11,7 @@ from plotly.subplots import make_subplots
 import requests
 import streamlit as st
 import yfinance as yf
+import os
 
 st.set_page_config(page_title="Jstok股價監控", layout="wide")
 st.title("JStok 📊 MA20+60 與財報監控")
@@ -631,7 +632,6 @@ with tab4:
                     )
                     
                     # 2. 讀取 rate.csv 並安全合併三率三升資訊
-                    import os
                     rate_csv_path = os.path.join(
                         os.path.dirname(os.path.abspath(__file__)), "rate.csv"
                     )
