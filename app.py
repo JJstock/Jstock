@@ -642,8 +642,8 @@ with tab3:
     if finance_data:
         df_fin = pd.DataFrame(finance_data)
 
-        # 合併 revenue_data（三率三升、月增率、年增率、累計年增率），用代號比對
-        merge_cols = ["三率三升", "月增率(MoM%)", "年增率(YoY%)", "累計年增率(%)"]
+        # 合併 revenue_data 的月增率、年增率、累計年增率（不含三率三升），用代號比對
+        merge_cols = ["月增率(MoM%)", "年增率(YoY%)", "累計年增率(%)"]
         revenue_df = st.session_state.get("revenue_data")
 
         if revenue_df is not None and not revenue_df.empty and "代號" in revenue_df.columns:
@@ -662,15 +662,12 @@ with tab3:
                 how="left",
             )
             df_fin = df_fin.drop(columns=["temp_merge_code"])
-
-            if "三率三升" in df_fin.columns:
-                df_fin["三率三升"] = df_fin["三率三升"].fillna("-")
         else:
-            st.warning("⚠️ 尚未取得營收資料（revenue_data），三率三升與營收欄位將顯示為空")
+            st.warning("⚠️ 尚未取得營收資料（revenue_data），營收欄位將顯示為空")
 
         for col in merge_cols:
             if col not in df_fin.columns:
-                df_fin[col] = None if col != "三率三升" else "-"
+                df_fin[col] = None
 
         df_fin = df_fin.drop(columns=["代號"]).set_index("名稱")
 
@@ -688,10 +685,10 @@ with tab3:
             use_container_width=True,
             column_config={
                 "_index": st.column_config.TextColumn(
-                    "股票名稱"
+                    "股票名稱", width="medium"
                 ),
                 "現價": st.column_config.TextColumn("現價", width="small"),
-                "狀態": st.column_config.TextColumn("狀態"),
+                "狀態": st.column_config.TextColumn("狀態", width="small"),
                 "Trailing (PE/EPS)": st.column_config.TextColumn(
                     "Trailing (PE/EPS)", width="medium"
                 ),
@@ -704,7 +701,6 @@ with tab3:
                 "殖利率": st.column_config.TextColumn(
                     "殖利率", width="small"
                 ),
-                "三率三升": st.column_config.TextColumn("三率三升", width="small"),
                 "月增率(MoM%)": st.column_config.NumberColumn(
                     "營收MoM", format="%.2f%%", width="small"
                 ),
