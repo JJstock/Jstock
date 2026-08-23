@@ -161,8 +161,84 @@ def load_revenue_data():
             st.session_state.revenue_data = pd.DataFrame()
             st.error(f"自動載入過程發生錯誤：{e}")
 
+@st.cache_data(ttl=3600)
+def fetch_institutional_investors_raw(date_str):
+    """抓某一天 TWSE T86 三大法人買賣超日報（僅上市股票）"""
+    url = f"https://www.twse.com.tw/rwd/zh/fund/T86?date={date_str}&selectType=ALL&response=json"
+    try:
+        resp = requests.get(url, timeout=15)
+        resp.raise_for_status()
+        data = resp.json()
+        if data.get("stat") != "OK" or not data.get("data"):
+            return None
+        df = pd.DataFrame(data["data"], columns=data["fields"])
+        return df
+    except Exception:
+        return None
 
-# 🔑 關鍵：在所有 tab 定義之前，先呼叫一次，確保 revenue_data 一定準備好
+
+def load_institutional_data():
+    """全域載入最近一個有資料的交易日的三大法人買賣超（僅上市 .TW）"""
+    if "institutional_data" in st.session_state:
+        return
+
+    from zoneinfo import ZoneInfo
+
+    today = datetime.datetime.now(ZoneInfo("Asia/Taipei")).date()
+    df_raw = None
+    used_date = None
+
+    for i in range(10):
+        check_date = today - datetime.timedelta(days=i)
+        df_try = fetch_institutional_investors_raw(check_date.strftime("%Y%m%d"))
+        if df_try is not None and not df_try.empty:
+            df_raw = df_try
+            used_date = check_date
+            break
+
+    if df_raw is None:
+        st.session_state.institutional_data = pd.DataFrame()
+        st.session_state.institutional_data_date = None
+        return
+
+    df_raw.columns = df_raw.columns.str.strip()
+    numeric_cols = [c for c in df_raw.columns if c not in ["證券代號", "證券名稱"]]
+    for col in numeric_cols:
+        df_raw[col] = df_raw[col].astype(str).str.strip().str.replace(",", "", regex=False)
+        df_raw[col] = pd.to_numeric(df_raw[col], errors="coerce").fillna(0)
+
+    df_raw["證券代號"] = df_raw["證券代號"].astype(str).str.strip()
+
+    def has(col):
+        return col in df_raw.columns
+
+    foreign_buy = [c for c in ["外陸資買進股數(不含外資自營商)", "外資自營商買進股數"] if has(c)]
+    foreign_sell = [c for c in ["外陸資賣出股數(不含外資自營商)", "外資自營商賣出股數"] if has(c)]
+    dealer_buy = [c for c in ["自營商買進股數(自行買賣)", "自營商買進股數(避險)"] if has(c)]
+    dealer_sell = [c for c in ["自營商賣出股數(自行買賣)", "自營商賣出股數(避險)"] if has(c)]
+
+    df_out = pd.DataFrame()
+    df_out["代號"] = df_raw["證券代號"] + ".TW"
+    df_out["外資買賣超(張)"] = (
+        (df_raw[foreign_buy].sum(axis=1) - df_raw[foreign_sell].sum(axis=1)) / 1000
+    ).round(0)
+    df_out["投信買賣超(張)"] = (
+        (df_raw.get("投信買進股數", 0) - df_raw.get("投信賣出股數", 0)) / 1000
+    ).round(0)
+    df_out["自營商買賣超(張)"] = (
+        (df_raw[dealer_buy].sum(axis=1) - df_raw[dealer_sell].sum(axis=1)) / 1000
+    ).round(0)
+    df_out["三大法人合計(張)"] = (
+        df_out["外資買賣超(張)"] + df_out["投信買賣超(張)"] + df_out["自營商買賣超(張)"]
+    )
+
+    st.session_state.institutional_data = df_out
+    st.session_state.institutional_data_date = used_date
+
+
+# 🔑 關鍵：在所有 tab 定義之前，先呼叫一次
+load_revenue_data()
+load_institutional_data()
 load_revenue_data()
 
 # --- 繪圖函式 ---
@@ -427,7 +503,9 @@ with tab1:
             d["代號"] = symbol
             d["名稱"] = display_name
             data_list.append(d)
-
+    if st.session_state.get("institutional_data_date"):
+        st.caption(f"📅 三大法人資料日期：{st.session_state['institutional_data_date']}（僅上市 .TW 股票有資料）")
+        
     if data_list:
         df_final = pd.DataFrame(data_list)
 
@@ -461,6 +539,28 @@ with tab1:
             if col not in df_final.columns:
                 df_final[col] = None if col != "三率三升" else "-"
 
+        # 合併三大法人買賣超（僅上市 .TW 股票有資料，上櫃會是空白）
+        insti_cols = ["外資買賣超(張)", "投信買賣超(張)", "自營商買賣超(張)", "三大法人合計(張)"]
+        insti_df = st.session_state.get("institutional_data")
+
+        if insti_df is not None and not insti_df.empty:
+            df_final["temp_merge_code2"] = df_final["代號"].astype(str).str.strip()
+            insti_merge = insti_df.copy()
+            insti_merge["temp_merge_code2"] = insti_merge["代號"].astype(str).str.strip()
+            insti_merge = insti_merge.drop_duplicates(subset="temp_merge_code2", keep="first")
+
+            df_final = pd.merge(
+                df_final,
+                insti_merge[["temp_merge_code2"] + insti_cols],
+                on="temp_merge_code2",
+                how="left",
+            )
+            df_final = df_final.drop(columns=["temp_merge_code2"])
+
+        for col in insti_cols:
+            if col not in df_final.columns:
+                df_final[col] = None
+
         # 顯示時不需要單獨的「代號」欄位（已經併入名稱顯示了）
         df_final = df_final.drop(columns=["代號"]).set_index("名稱")
 
@@ -489,6 +589,10 @@ with tab1:
                 "月增率(MoM%)": st.column_config.NumberColumn("營收MoM", format="%.2f%%", width="small"),
                 "年增率(YoY%)": st.column_config.NumberColumn("營收YoY", format="%.2f%%", width="small"),
                 "累計年增率(%)": st.column_config.NumberColumn("累計年增率", format="%.2f%%", width="small"),
+                "外資買賣超(張)": st.column_config.NumberColumn("外資買賣超(張)", format="%d"),
+                "投信買賣超(張)": st.column_config.NumberColumn("投信買賣超(張)", format="%d"),
+                "自營商買賣超(張)": st.column_config.NumberColumn("自營商買賣超(張)", format="%d"),
+                "三大法人合計(張)": st.column_config.NumberColumn("三大法人合計(張)", format="%d"),
             },
         )
     else:
