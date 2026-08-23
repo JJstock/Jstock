@@ -303,15 +303,6 @@ def load_institutional_data():
     st.session_state.institutional_data = df_out
     st.session_state.institutional_data_date = used_date
 
-
-# 🔑 關鍵：在所有 tab 定義之前，先呼叫一次，確保 revenue_data 與 institutional_data 一定準備好
-load_revenue_data()
-load_institutional_data()
-
-    st.session_state.institutional_data = df_out
-    st.session_state.institutional_data_date = used_date
-
-
 # 🔑 關鍵：在所有 tab 定義之前，先呼叫一次
 load_revenue_data()
 load_institutional_data()
