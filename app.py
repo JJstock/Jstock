@@ -177,60 +177,136 @@ def fetch_institutional_investors_raw(date_str):
         return None
 
 
+def to_roc_date(d):
+    """西元日期轉民國格式 115/06/04"""
+    return f"{d.year - 1911}/{d.month:02d}/{d.day:02d}"
+
+
+@st.cache_data(ttl=3600)
+def fetch_tpex_institutional_investors_raw(date_roc):
+    """抓某一天 TPEx 三大法人買賣明細（僅上櫃股票）"""
+    url = "https://www.tpex.org.tw/www/zh-tw/insti/dailyTrade"
+    params = {"type": "Daily", "sect": "EW", "date": date_roc, "id": "", "response": "json"}
+    try:
+        headers = {"User-Agent": "Mozilla/5.0"}
+        resp = requests.get(url, params=params, headers=headers, timeout=15)
+        resp.raise_for_status()
+        data = resp.json()
+        tables = data.get("tables") or []
+        if not tables:
+            return None
+        rows = tables[0].get("data") or []
+        if not rows:
+            return None
+        return rows
+    except Exception:
+        return None
+
+
+def parse_tpex_rows(rows):
+    """解析 TPEx 回傳的原始列資料為三大法人買賣超（張）"""
+    records = []
+    for r in rows:
+        if not r or len(r) < 24:
+            continue
+        records.append({
+            "code": str(r[0]).strip().strip("=").strip('"'),
+            "外資買賣超(張)": r[10],
+            "投信買賣超(張)": r[13],
+            "自營商買賣超(張)": r[22],
+        })
+    if not records:
+        return pd.DataFrame()
+
+    df = pd.DataFrame(records)
+    for col in ["外資買賣超(張)", "投信買賣超(張)", "自營商買賣超(張)"]:
+        df[col] = df[col].astype(str).str.replace(",", "", regex=False).str.strip()
+        df[col] = (pd.to_numeric(df[col], errors="coerce").fillna(0) / 1000).round(0)
+
+    df["代號"] = df["code"].astype(str).str.strip().str.zfill(4) + ".TWO"
+    df["三大法人合計(張)"] = (
+        df["外資買賣超(張)"] + df["投信買賣超(張)"] + df["自營商買賣超(張)"]
+    )
+    return df[["代號", "外資買賣超(張)", "投信買賣超(張)", "自營商買賣超(張)", "三大法人合計(張)"]]
+
+
 def load_institutional_data():
-    """全域載入最近一個有資料的交易日的三大法人買賣超（僅上市 .TW）"""
+    """全域載入最近一個有資料的交易日的三大法人買賣超（上市 TWSE + 上櫃 TPEx）"""
     if "institutional_data" in st.session_state:
         return
 
     from zoneinfo import ZoneInfo
 
     today = datetime.datetime.now(ZoneInfo("Asia/Taipei")).date()
-    df_raw = None
+    df_twse_raw = None
     used_date = None
 
+    # 找最近一個有 TWSE 資料的交易日
     for i in range(10):
         check_date = today - datetime.timedelta(days=i)
         df_try = fetch_institutional_investors_raw(check_date.strftime("%Y%m%d"))
         if df_try is not None and not df_try.empty:
-            df_raw = df_try
+            df_twse_raw = df_try
             used_date = check_date
             break
 
-    if df_raw is None:
+    df_out_list = []
+
+    # --- 處理 TWSE（上市）---
+    if df_twse_raw is not None:
+        df_twse_raw.columns = df_twse_raw.columns.str.strip()
+        numeric_cols = [c for c in df_twse_raw.columns if c not in ["證券代號", "證券名稱"]]
+        for col in numeric_cols:
+            df_twse_raw[col] = df_twse_raw[col].astype(str).str.strip().str.replace(",", "", regex=False)
+            df_twse_raw[col] = pd.to_numeric(df_twse_raw[col], errors="coerce").fillna(0)
+
+        df_twse_raw["證券代號"] = df_twse_raw["證券代號"].astype(str).str.strip()
+
+        def has(col):
+            return col in df_twse_raw.columns
+
+        foreign_buy = [c for c in ["外陸資買進股數(不含外資自營商)", "外資自營商買進股數"] if has(c)]
+        foreign_sell = [c for c in ["外陸資賣出股數(不含外資自營商)", "外資自營商賣出股數"] if has(c)]
+        dealer_buy = [c for c in ["自營商買進股數(自行買賣)", "自營商買進股數(避險)"] if has(c)]
+        dealer_sell = [c for c in ["自營商賣出股數(自行買賣)", "自營商賣出股數(避險)"] if has(c)]
+
+        df_twse_out = pd.DataFrame()
+        df_twse_out["代號"] = df_twse_raw["證券代號"] + ".TW"
+        df_twse_out["外資買賣超(張)"] = (
+            (df_twse_raw[foreign_buy].sum(axis=1) - df_twse_raw[foreign_sell].sum(axis=1)) / 1000
+        ).round(0)
+        df_twse_out["投信買賣超(張)"] = (
+            (df_twse_raw.get("投信買進股數", 0) - df_twse_raw.get("投信賣出股數", 0)) / 1000
+        ).round(0)
+        df_twse_out["自營商買賣超(張)"] = (
+            (df_twse_raw[dealer_buy].sum(axis=1) - df_twse_raw[dealer_sell].sum(axis=1)) / 1000
+        ).round(0)
+        df_twse_out["三大法人合計(張)"] = (
+            df_twse_out["外資買賣超(張)"] + df_twse_out["投信買賣超(張)"] + df_twse_out["自營商買賣超(張)"]
+        )
+        df_out_list.append(df_twse_out)
+
+    # --- 處理 TPEx（上櫃）：用同一天的民國日期嘗試 ---
+    if used_date is not None:
+        tpex_rows = fetch_tpex_institutional_investors_raw(to_roc_date(used_date))
+        if tpex_rows:
+            df_tpex_out = parse_tpex_rows(tpex_rows)
+            if not df_tpex_out.empty:
+                df_out_list.append(df_tpex_out)
+
+    if not df_out_list:
         st.session_state.institutional_data = pd.DataFrame()
         st.session_state.institutional_data_date = None
         return
 
-    df_raw.columns = df_raw.columns.str.strip()
-    numeric_cols = [c for c in df_raw.columns if c not in ["證券代號", "證券名稱"]]
-    for col in numeric_cols:
-        df_raw[col] = df_raw[col].astype(str).str.strip().str.replace(",", "", regex=False)
-        df_raw[col] = pd.to_numeric(df_raw[col], errors="coerce").fillna(0)
+    df_out = pd.concat(df_out_list, ignore_index=True)
+    st.session_state.institutional_data = df_out
+    st.session_state.institutional_data_date = used_date
 
-    df_raw["證券代號"] = df_raw["證券代號"].astype(str).str.strip()
 
-    def has(col):
-        return col in df_raw.columns
-
-    foreign_buy = [c for c in ["外陸資買進股數(不含外資自營商)", "外資自營商買進股數"] if has(c)]
-    foreign_sell = [c for c in ["外陸資賣出股數(不含外資自營商)", "外資自營商賣出股數"] if has(c)]
-    dealer_buy = [c for c in ["自營商買進股數(自行買賣)", "自營商買進股數(避險)"] if has(c)]
-    dealer_sell = [c for c in ["自營商賣出股數(自行買賣)", "自營商賣出股數(避險)"] if has(c)]
-
-    df_out = pd.DataFrame()
-    df_out["代號"] = df_raw["證券代號"] + ".TW"
-    df_out["外資買賣超(張)"] = (
-        (df_raw[foreign_buy].sum(axis=1) - df_raw[foreign_sell].sum(axis=1)) / 1000
-    ).round(0)
-    df_out["投信買賣超(張)"] = (
-        (df_raw.get("投信買進股數", 0) - df_raw.get("投信賣出股數", 0)) / 1000
-    ).round(0)
-    df_out["自營商買賣超(張)"] = (
-        (df_raw[dealer_buy].sum(axis=1) - df_raw[dealer_sell].sum(axis=1)) / 1000
-    ).round(0)
-    df_out["三大法人合計(張)"] = (
-        df_out["外資買賣超(張)"] + df_out["投信買賣超(張)"] + df_out["自營商買賣超(張)"]
-    )
+# 🔑 關鍵：在所有 tab 定義之前，先呼叫一次，確保 revenue_data 與 institutional_data 一定準備好
+load_revenue_data()
+load_institutional_data()
 
     st.session_state.institutional_data = df_out
     st.session_state.institutional_data_date = used_date
