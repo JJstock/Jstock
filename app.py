@@ -482,6 +482,8 @@ with st.sidebar:
         st.cache_data.clear()
         if "revenue_data" in st.session_state:
             del st.session_state["revenue_data"]
+        if "institutional_data" in st.session_state:
+            del st.session_state["institutional_data"]
         st.session_state["last_cache_clear"] = pd.Timestamp.now(tz="Asia/Taipei").strftime(
             "%Y-%m-%d %H:%M:%S"
         )
