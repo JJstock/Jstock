@@ -591,10 +591,10 @@ with tab1:
                 "月增率(MoM%)": st.column_config.NumberColumn("營收MoM", format="%.2f%%", width="small"),
                 "年增率(YoY%)": st.column_config.NumberColumn("營收YoY", format="%.2f%%", width="small"),
                 "累計年增率(%)": st.column_config.NumberColumn("累計年增率", format="%.2f%%", width="small"),
-                "外資買賣超(張)": st.column_config.NumberColumn("外資買賣超(張)", format="%d"),
-                "投信買賣超(張)": st.column_config.NumberColumn("投信買賣超(張)", format="%d"),
-                "自營商買賣超(張)": st.column_config.NumberColumn("自營商買賣超(張)", format="%d"),
-                "三大法人合計(張)": st.column_config.NumberColumn("三大法人合計(張)", format="%d"),
+                "外資買賣超(張)": st.column_config.NumberColumn("外資買賣超(張)", format="%d", width="small"),
+                "投信買賣超(張)": st.column_config.NumberColumn("投信買賣超(張)", format="%d", width="small"),
+                "自營商買賣超(張)": st.column_config.NumberColumn("自營商買賣超(張)", format="%d", width="small"),
+                "三大法人合計(張)": st.column_config.NumberColumn("三大法人合計(張)", format="%d", width="small"),
             },
         )
     else:
