@@ -680,13 +680,16 @@ with tab1:
 # --- TAB 2: 題材專區 ---
 with tab2:
     st.subheader("📋 題材專區")
+
+    if st.session_state.get("institutional_data_date"):
+        st.caption(f"📅 三大法人資料日期：{st.session_state['institutional_data_date']}")
+
     topic_stocks = {
         "2603.TW": {"名稱": "長榮", "題材": "海運"},
         "2615.TW": {"名稱": "萬海", "題材": "海運"},
         "2637.TW": {"名稱": "慧洋-KY", "題材": "散裝"},
         "3008.TW": {"名稱": "大立光", "題材": "光學鏡頭"},
         "3406.TW": {"名稱": "玉晶光", "題材": "光學鏡頭"},
-        "2301.TW": {"名稱": "光寶科", "題材": "800V電源"},
         "3042.TW": {"名稱": "晶技", "題材": "石英元件"},
         "2059.TW": {"名稱": "川湖", "題材": "滑軌"},
         "3017.TW": {"名稱": "奇鋐", "題材": "散熱"},
@@ -746,6 +749,28 @@ with tab2:
             if col not in df_topic.columns:
                 df_topic[col] = None if col != "三率三升" else "-"
 
+        # 合併三大法人買賣超（上市 TWSE + 上櫃 TPEx），用代號比對
+        insti_cols = ["外資買賣超(張)", "投信買賣超(張)", "自營商買賣超(張)", "三大法人合計(張)"]
+        insti_df = st.session_state.get("institutional_data")
+
+        if insti_df is not None and not insti_df.empty:
+            df_topic["temp_merge_code2"] = df_topic["代號"].astype(str).str.strip()
+            insti_merge = insti_df.copy()
+            insti_merge["temp_merge_code2"] = insti_merge["代號"].astype(str).str.strip()
+            insti_merge = insti_merge.drop_duplicates(subset="temp_merge_code2", keep="first")
+
+            df_topic = pd.merge(
+                df_topic,
+                insti_merge[["temp_merge_code2"] + insti_cols],
+                on="temp_merge_code2",
+                how="left",
+            )
+            df_topic = df_topic.drop(columns=["temp_merge_code2"])
+
+        for col in insti_cols:
+            if col not in df_topic.columns:
+                df_topic[col] = None
+
         # 顯示時不需要單獨的「代號」欄位（已經併入名稱顯示了）
         df_topic = df_topic.drop(columns=["代號"]).set_index("名稱")
 
@@ -755,7 +780,7 @@ with tab2:
 
         styled_df_topic = df_topic.style.map(
             highlight_negative,
-            subset=["成長率", "月增率(MoM%)", "年增率(YoY%)", "累計年增率(%)"],
+            subset=["成長率", "月增率(MoM%)", "年增率(YoY%)", "累計年增率(%)"] + insti_cols,
         )
 
         st.dataframe(
@@ -774,6 +799,10 @@ with tab2:
                 "月增率(MoM%)": st.column_config.NumberColumn("營收MoM", format="%.2f%%", width="small"),
                 "年增率(YoY%)": st.column_config.NumberColumn("營收YoY", format="%.2f%%", width="small"),
                 "累計年增率(%)": st.column_config.NumberColumn("累計年增率", format="%.2f%%", width="small"),
+                "外資買賣超(張)": st.column_config.NumberColumn("外資買賣超(張)", format="%d", width="small"),
+                "投信買賣超(張)": st.column_config.NumberColumn("投信買賣超(張)", format="%d", width="small"),
+                "自營商買賣超(張)": st.column_config.NumberColumn("自營商買賣超(張)", format="%d", width="small"),
+                "三大法人合計(張)": st.column_config.NumberColumn("三大法人合計(張)", format="%d", width="small"),
             },
         )
     else:
