@@ -573,7 +573,7 @@ with tab1:
             d["名稱"] = display_name
             data_list.append(d)
     if st.session_state.get("institutional_data_date"):
-        st.caption(f"📅 三大法人資料日期：{st.session_state['institutional_data_date']}（僅上市 .TW 股票有資料）")
+        st.caption(f"📅 三大法人資料日期：{st.session_state['institutional_data_date']}")
         
     if data_list:
         df_final = pd.DataFrame(data_list)
