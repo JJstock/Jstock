@@ -1627,9 +1627,6 @@ with tab7:
 with tab8:
     st.write("### 🧮 投資組合分析工具")
 
-    import numpy as np
-    import pandas as pd
-    import yfinance as yf
     from scipy.optimize import minimize
     import plotly.graph_objects as go
     import plotly.express as px
