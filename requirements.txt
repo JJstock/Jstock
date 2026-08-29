@@ -6,4 +6,4 @@ numpy
 fugle-marketdata
 twstock
 datetime
-scipy.optimize 
+scipy
