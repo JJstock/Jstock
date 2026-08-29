@@ -428,7 +428,7 @@ def get_stock_data(ticker):
 
 
 # --- 主程式流程 ---
-tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs([
+tab1, tab2, tab3, tab4, tab5, tab6, tab7 ,tab8= st.tabs([
     "📊 主監控頁面",
     "📈 題材專區",
     "🏦 金農專區",
@@ -436,6 +436,7 @@ tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs([
     "📊 重訊查詢",
     "🚀 查詢 ETF 成分股",
     "📈 本益比河流圖",
+    "🧮 投資組合分析工具"
 ])
 
 if "my_stocks" not in st.session_state:
@@ -1623,3 +1624,307 @@ with tab7:
                 }),
                 use_container_width=True,
             )
+with tab8:
+    st.write("### 🧮 投資組合分析工具")
+
+    import numpy as np
+    import pandas as pd
+    import yfinance as yf
+    from scipy.optimize import minimize
+    import plotly.graph_objects as go
+    import plotly.express as px
+
+    sub_tab1, sub_tab2, sub_tab3 = st.tabs(["📈 效率前緣", "🔗 相關性矩陣", "📊 營收成長迴歸"])
+
+    # ============================================================
+    # 共用：抓取歷史股價
+    # ============================================================
+    @st.cache_data(ttl=3600)
+    def fetch_price_data(tickers, period="2y"):
+        """抓取多檔股票的歷史收盤價，回傳 DataFrame（欄位為 ticker）"""
+        data = yf.download(tickers, period=period, auto_adjust=True)["Close"]
+        if isinstance(data, pd.Series):  # 只有一檔股票時會回傳 Series
+            data = data.to_frame(name=tickers[0])
+        data = data.dropna(how="all").ffill().dropna()
+        return data
+
+    # ============================================================
+    # 分頁1：效率前緣 Efficient Frontier
+    # ============================================================
+    with sub_tab1:
+        st.write("#### 效率前緣計算")
+        st.caption("輸入多檔股票代號（以逗號分隔），計算不同權重組合下的風險/報酬，找出最適投資組合")
+
+        tickers_input = st.text_input(
+            "股票代號（範例：2330.TW, 2317.TW, 2454.TW）", 
+            value="2330.TW, 2317.TW, 2454.TW",
+            key="ef_tickers"
+        )
+        period = st.selectbox("歷史資料期間", ["6mo", "1y", "2y", "5y"], index=2, key="ef_period")
+        risk_free_rate = st.number_input("無風險利率 (%)", value=1.5, step=0.1, key="ef_rf") / 100
+
+        if st.button("🚀 計算效率前緣", key="ef_calc_btn"):
+            tickers = [t.strip().upper() for t in tickers_input.split(",") if t.strip()]
+
+            if len(tickers) < 2:
+                st.error("請至少輸入 2 檔股票")
+            else:
+                with st.spinner("下載歷史股價中..."):
+                    try:
+                        prices = fetch_price_data(tickers, period)
+
+                        if prices.empty or len(prices.columns) < 2:
+                            st.error("無法取得足夠的股價資料，請確認代號正確")
+                        else:
+                            # 計算日報酬率
+                            returns = prices.pct_change().dropna()
+
+                            # 年化平均報酬與共變異數矩陣
+                            mean_returns = returns.mean() * 252
+                            cov_matrix = returns.cov() * 252
+
+                            n_assets = len(mean_returns)
+
+                            def portfolio_performance(weights):
+                                ret = np.dot(weights, mean_returns)
+                                vol = np.sqrt(np.dot(weights.T, np.dot(cov_matrix, weights)))
+                                return ret, vol
+
+                            def neg_sharpe(weights):
+                                ret, vol = portfolio_performance(weights)
+                                return -(ret - risk_free_rate) / vol
+
+                            def portfolio_vol(weights):
+                                return portfolio_performance(weights)[1]
+
+                            constraints = ({'type': 'eq', 'fun': lambda w: np.sum(w) - 1})
+                            bounds = tuple((0, 1) for _ in range(n_assets))
+                            init_guess = np.array([1 / n_assets] * n_assets)
+
+                            # 1. 找出最大夏普比率的投資組合
+                            opt_sharpe = minimize(neg_sharpe, init_guess, method='SLSQP',
+                                                   bounds=bounds, constraints=constraints)
+                            best_weights = opt_sharpe.x
+                            best_ret, best_vol = portfolio_performance(best_weights)
+
+                            # 2. 找出最小波動率的投資組合
+                            opt_minvol = minimize(portfolio_vol, init_guess, method='SLSQP',
+                                                   bounds=bounds, constraints=constraints)
+                            minvol_weights = opt_minvol.x
+                            minvol_ret, minvol_vol = portfolio_performance(minvol_weights)
+
+                            # 3. 模擬效率前緣曲線（掃描目標報酬率）
+                            target_returns = np.linspace(mean_returns.min(), mean_returns.max(), 50)
+                            frontier_vols = []
+
+                            for target in target_returns:
+                                cons = (
+                                    {'type': 'eq', 'fun': lambda w: np.sum(w) - 1},
+                                    {'type': 'eq', 'fun': lambda w, target=target: portfolio_performance(w)[0] - target}
+                                )
+                                res = minimize(portfolio_vol, init_guess, method='SLSQP',
+                                                bounds=bounds, constraints=cons)
+                                frontier_vols.append(res.fun if res.success else np.nan)
+
+                            # 4. 隨機模擬點（讓圖更豐富）
+                            np.random.seed(42)
+                            n_sim = 3000
+                            sim_weights = np.random.dirichlet(np.ones(n_assets), n_sim)
+                            sim_rets = sim_weights @ mean_returns.values
+                            sim_vols = np.sqrt(np.einsum('ij,jk,ik->i', sim_weights, cov_matrix.values, sim_weights))
+                            sim_sharpe = (sim_rets - risk_free_rate) / sim_vols
+
+                            # 繪圖
+                            fig = go.Figure()
+
+                            fig.add_trace(go.Scatter(
+                                x=sim_vols, y=sim_rets, mode='markers',
+                                marker=dict(size=4, color=sim_sharpe, colorscale='Viridis',
+                                            showscale=True, colorbar=dict(title="夏普比率")),
+                                name="隨機模擬組合", opacity=0.5
+                            ))
+
+                            fig.add_trace(go.Scatter(
+                                x=frontier_vols, y=target_returns, mode='lines',
+                                line=dict(color='red', width=3), name="效率前緣"
+                            ))
+
+                            fig.add_trace(go.Scatter(
+                                x=[best_vol], y=[best_ret], mode='markers',
+                                marker=dict(size=15, color='gold', symbol='star'),
+                                name="最大夏普比率組合"
+                            ))
+
+                            fig.add_trace(go.Scatter(
+                                x=[minvol_vol], y=[minvol_ret], mode='markers',
+                                marker=dict(size=15, color='blue', symbol='diamond'),
+                                name="最小風險組合"
+                            ))
+
+                            fig.update_layout(
+                                title="效率前緣 (Efficient Frontier)",
+                                xaxis_title="年化波動率（風險）",
+                                yaxis_title="年化預期報酬率",
+                                height=550
+                            )
+                            st.plotly_chart(fig, use_container_width=True)
+
+                            # 顯示最適權重
+                            col1, col2 = st.columns(2)
+                            with col1:
+                                st.write("##### ⭐ 最大夏普比率組合")
+                                st.write(f"預期年報酬: **{best_ret*100:.2f}%**")
+                                st.write(f"年化波動率: **{best_vol*100:.2f}%**")
+                                st.write(f"夏普比率: **{(best_ret-risk_free_rate)/best_vol:.3f}**")
+                                weight_df = pd.DataFrame({'股票': tickers, '權重': (best_weights*100).round(2)})
+                                st.dataframe(weight_df, hide_index=True, use_container_width=True)
+
+                            with col2:
+                                st.write("##### 🛡️ 最小風險組合")
+                                st.write(f"預期年報酬: **{minvol_ret*100:.2f}%**")
+                                st.write(f"年化波動率: **{minvol_vol*100:.2f}%**")
+                                weight_df2 = pd.DataFrame({'股票': tickers, '權重': (minvol_weights*100).round(2)})
+                                st.dataframe(weight_df2, hide_index=True, use_container_width=True)
+
+                    except Exception as e:
+                        st.error(f"計算失敗：{e}")
+
+    # ============================================================
+    # 分頁2：相關性矩陣
+    # ============================================================
+    with sub_tab2:
+        st.write("#### 多股票相關性矩陣")
+        st.caption("觀察股票之間的價格連動程度，有助於分散投資風險")
+
+        corr_tickers_input = st.text_input(
+            "股票代號（以逗號分隔）", 
+            value="2330.TW, 2317.TW, 2454.TW, 2412.TW, 3008.TW",
+            key="corr_tickers"
+        )
+        corr_period = st.selectbox("歷史資料期間", ["6mo", "1y", "2y", "5y"], index=1, key="corr_period")
+
+        if st.button("🔍 計算相關性", key="corr_calc_btn"):
+            tickers = [t.strip().upper() for t in corr_tickers_input.split(",") if t.strip()]
+
+            if len(tickers) < 2:
+                st.error("請至少輸入 2 檔股票")
+            else:
+                with st.spinner("下載歷史股價中..."):
+                    try:
+                        prices = fetch_price_data(tickers, corr_period)
+
+                        if prices.empty:
+                            st.error("無法取得股價資料")
+                        else:
+                            returns = prices.pct_change().dropna()
+                            corr_matrix = returns.corr()
+
+                            fig = px.imshow(
+                                corr_matrix,
+                                text_auto=".2f",
+                                color_continuous_scale="RdBu_r",
+                                zmin=-1, zmax=1,
+                                aspect="auto",
+                                title="股票報酬率相關性矩陣"
+                            )
+                            fig.update_layout(height=500)
+                            st.plotly_chart(fig, use_container_width=True)
+
+                            # 找出最高/最低相關的配對
+                            corr_pairs = corr_matrix.where(
+                                np.triu(np.ones(corr_matrix.shape), k=1).astype(bool)
+                            ).stack().sort_values(ascending=False)
+
+                            col1, col2 = st.columns(2)
+                            with col1:
+                                st.write("##### 🔺 相關性最高的配對")
+                                st.dataframe(
+                                    corr_pairs.head(3).reset_index().rename(
+                                        columns={'level_0': '股票A', 'level_1': '股票B', 0: '相關係數'}
+                                    ),
+                                    hide_index=True
+                                )
+                            with col2:
+                                st.write("##### 🔻 相關性最低的配對（分散風險佳）")
+                                st.dataframe(
+                                    corr_pairs.tail(3).reset_index().rename(
+                                        columns={'level_0': '股票A', 'level_1': '股票B', 0: '相關係數'}
+                                    ),
+                                    hide_index=True
+                                )
+
+                    except Exception as e:
+                        st.error(f"計算失敗：{e}")
+
+    # ============================================================
+    # 分頁3：營收成長趨勢迴歸
+    # ============================================================
+    with sub_tab3:
+        st.write("#### 營收成長趨勢預測")
+        st.caption("用歷史季度營收資料，透過線性迴歸預測未來成長趨勢")
+
+        reg_ticker = st.text_input("股票代號（單一）", value="2330.TW", key="reg_ticker")
+        forecast_periods = st.slider("預測未來幾季", 1, 8, 4, key="reg_periods")
+
+        if st.button("📐 執行迴歸分析", key="reg_calc_btn"):
+            with st.spinner("下載財報資料中..."):
+                try:
+                    stock = yf.Ticker(reg_ticker)
+                    quarterly_rev = stock.quarterly_financials.loc["Total Revenue"].sort_index()
+
+                    if quarterly_rev.empty or len(quarterly_rev) < 4:
+                        st.error("歷史季度營收資料不足（需至少4季），無法進行迴歸")
+                    else:
+                        df_rev = quarterly_rev.reset_index()
+                        df_rev.columns = ["季度", "營收"]
+                        df_rev["期數"] = range(len(df_rev))
+
+                        # 對營收取 log，讓成長率呈線性關係（複合成長模型）
+                        df_rev["log營收"] = np.log(df_rev["營收"])
+
+                        # 線性迴歸: log(revenue) = a + b * period
+                        X = df_rev["期數"].values
+                        y = df_rev["log營收"].values
+                        b, a = np.polyfit(X, y, 1)  # slope, intercept
+
+                        # 換算成每季成長率
+                        quarterly_growth_rate = (np.exp(b) - 1) * 100
+
+                        # 預測未來
+                        future_periods = np.arange(len(df_rev), len(df_rev) + forecast_periods)
+                        future_log_rev = a + b * future_periods
+                        future_rev = np.exp(future_log_rev)
+
+                        # 繪圖
+                        fig = go.Figure()
+                        fig.add_trace(go.Scatter(
+                            x=df_rev["季度"].astype(str), y=df_rev["營收"],
+                            mode='lines+markers', name="歷史營收", line=dict(color='blue')
+                        ))
+
+                        future_labels = [f"預測+{i+1}" for i in range(forecast_periods)]
+                        fig.add_trace(go.Scatter(
+                            x=future_labels, y=future_rev,
+                            mode='lines+markers', name="預測營收",
+                            line=dict(color='red', dash='dash')
+                        ))
+
+                        fig.update_layout(
+                            title=f"{reg_ticker} 季度營收趨勢與預測",
+                            xaxis_title="季度", yaxis_title="營收",
+                            height=500
+                        )
+                        st.plotly_chart(fig, use_container_width=True)
+
+                        st.success(f"估計每季複合成長率：**{quarterly_growth_rate:.2f}%**")
+
+                        pred_df = pd.DataFrame({
+                            "期別": future_labels,
+                            "預測營收": [f"{v:,.0f}" for v in future_rev]
+                        })
+                        st.dataframe(pred_df, hide_index=True, use_container_width=True)
+
+                        st.caption("⚠️ 此為簡易線性迴歸模型（假設固定複合成長率），實際營收受景氣循環、產業因素影響，僅供參考。")
+
+                except Exception as e:
+                    st.error(f"分析失敗：{e}（可能是該股票沒有足夠的季度財報資料）")
