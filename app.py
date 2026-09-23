@@ -428,10 +428,11 @@ def get_stock_data(ticker):
 
 
 # --- 主程式流程 ---
-tab1, tab2, tab3, tab4, tab5, tab6, tab7 ,tab8= st.tabs([
+tab1, tab2, tab3, tab4, tab5, tab6, tab7 ,tab8,tab9= st.tabs([
     "📊 主監控頁面",
     "📈 題材專區",
     "🏦 金農專區",
+    "📊 三大法人",
     "📈 月營收監控",
     "📊 重訊查詢",
     "🚀 查詢 ETF 成分股",
@@ -1925,3 +1926,166 @@ with tab8:
 
                 except Exception as e:
                     st.error(f"分析失敗：{e}（可能是該股票沒有足夠的季度財報資料）")
+
+
+ 
+# ---------- 工具函式 ----------
+ 
+def _to_roc_date(date: datetime.date) -> str:
+    y = date.year - 1911
+    return f"{y}/{date.month:02d}/{date.day:02d}"
+ 
+ 
+def _get_last_trading_date_guess() -> datetime.date:
+    """簡易猜測最後交易日：週六往前一天、週日往前兩天。"""
+    today = datetime.date.today()
+    weekday = today.isoweekday()  # 1=Mon ... 7=Sun
+    if weekday == 6:
+        return today - datetime.timedelta(days=1)
+    if weekday == 7:
+        return today - datetime.timedelta(days=2)
+    return today
+ 
+ 
+def _clean_num(v) -> int:
+    try:
+        return int(str(v).replace(",", "").strip() or 0)
+    except (ValueError, TypeError):
+        return 0
+ 
+ 
+# ---------- 抓取 + 解析 ----------
+ 
+def _fetch_twse(yyyymmdd: str) -> list:
+    url = (
+        "https://www.twse.com.tw/rwd/zh/fund/T86"
+        f"?date={yyyymmdd}&selectType=ALL&response=json"
+    )
+    try:
+        res = requests.get(url, timeout=15)
+        if res.status_code != 200:
+            return []
+        data = res.json()
+        if data.get("stat") != "OK" or not data.get("data"):
+            return []
+    except Exception:
+        return []
+ 
+    rows = []
+    for row in data["data"]:
+        rows.append([
+            "上市",
+            row[0],                                       # 代號
+            row[1],                                       # 名稱
+            _clean_num(row[4]) + _clean_num(row[7]),      # 外資買賣超
+            _clean_num(row[10]),                          # 投信買賣超
+            _clean_num(row[11]),                          # 自營商買賣超
+            _clean_num(row[18]),                          # 三大法人合計
+        ])
+    return rows
+ 
+ 
+def _fetch_tpex(roc_date: str) -> list:
+    url = (
+        "https://www.tpex.org.tw/web/stock/3insti/daily_trade/3itrade_hedge_result.php"
+        f"?l=zh-tw&o=json&se=EW&t=D&d={roc_date}&s=0,asc"
+    )
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+    }
+    try:
+        res = requests.get(url, headers=headers, timeout=15)
+        if res.status_code != 200:
+            return []
+        data = res.json()
+    except Exception:
+        return []
+ 
+    raw_rows = data.get("aaData") or (
+        data.get("tables", [{}])[0].get("data") if data.get("tables") else []
+    ) or []
+    if not raw_rows:
+        return []
+ 
+    rows = []
+    for row in raw_rows:
+        rows.append([
+            "上櫃",
+            row[0],                                       # 代號
+            row[1],                                       # 名稱
+            _clean_num(row[4]) + _clean_num(row[7]),      # 外資買賣超
+            _clean_num(row[13]),                          # 投信買賣超
+            _clean_num(row[22]),                          # 自營商買賣超
+            _clean_num(row[23]),                          # 三大法人合計
+        ])
+    return rows
+ 
+ 
+@st.cache_data(ttl=600, show_spinner=False)
+def _load_data(date: datetime.date) -> pd.DataFrame:
+    yyyymmdd = date.strftime("%Y%m%d")
+    roc_date = _to_roc_date(date)
+ 
+    twse_rows = _fetch_twse(yyyymmdd)
+    tpex_rows = _fetch_tpex(roc_date)
+ 
+    columns = ["市場", "代號", "名稱", "外資買賣超(股)", "投信買賣超(股)",
+               "自營商買賣超(股)", "三大法人合計(股)"]
+    df = pd.DataFrame(twse_rows + tpex_rows, columns=columns)
+    return df
+ 
+ 
+# ---------- Streamlit 分頁內容 ----------
+ 
+with tab9:
+    st.subheader("三大法人買賣超")
+ 
+    default_date = _get_last_trading_date_guess()
+    col1, col2 = st.columns([1, 3])
+    with col1:
+        date = st.date_input("查詢日期", value=default_date, key="tab9_date")
+    with col2:
+        st.write("")
+        st.write("")
+        refresh = st.button("重新抓取", key="tab9_refresh")
+ 
+    if refresh:
+        _load_data.clear()
+ 
+    with st.spinner("抓取中..."):
+        df = _load_data(date)
+ 
+    if df.empty:
+        st.warning("查無資料，請確認日期是否為交易日，或稍後再試。")
+        return
+ 
+    st.caption(f"共 {len(df)} 筆 | 資料來源：TWSE / TPEX")
+ 
+    market_filter = st.multiselect(
+        "市場別", options=sorted(df["市場"].unique()),
+        default=sorted(df["市場"].unique()), key="tab9_market"
+    )
+    keyword = st.text_input("搜尋代號或名稱", key="tab9_search")
+ 
+    view = df[df["市場"].isin(market_filter)]
+    if keyword:
+        view = view[
+            view["代號"].astype(str).str.contains(keyword, case=False, na=False)
+            | view["名稱"].astype(str).str.contains(keyword, case=False, na=False)
+        ]
+ 
+    st.dataframe(view, use_container_width=True, hide_index=True)
+ 
+    csv = view.to_csv(index=False).encode("utf-8-sig")
+    st.download_button(
+        "下載 CSV", data=csv,
+        file_name=f"三大法人_{date.strftime('%Y%m%d')}.csv",
+        mime="text/csv", key="tab9_download"
+    )
+ 
+ 
+# 讓這個檔案也能單獨執行測試
+if __name__ == "__main__":
+    st.set_page_config(page_title="三大法人", layout="wide")
+    render_三大法人_tab()
+ 
