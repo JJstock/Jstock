@@ -2057,7 +2057,7 @@ with tab9:
  
     if df.empty:
         st.warning("查無資料，請確認日期是否為交易日，或稍後再試。")
-        return
+    return
  
     st.caption(f"共 {len(df)} 筆 | 資料來源：TWSE / TPEX")
  
