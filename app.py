@@ -2089,6 +2089,9 @@ def _fetch_tpex(roc_date: str) -> list:
 
 # ============================================================
 # Yahoo Finance：指定日期收盤價
+#
+# 上市 → .TW
+# 上櫃 → .TWO
 # ============================================================
 
 @st.cache_data(ttl=3600, show_spinner=False)
@@ -2096,45 +2099,7 @@ def _get_yfinance_close(
     ticker: str,
     date: datetime.date
 ):
-    """
-    使用 yfinance 取得「指定日期」收盤價。
-
-    例如：
-    2026/09/22
-    → 只抓 2026/09/22 的 Close
-    """
-
-    try:
-
-        start_date = date
-        end_date = date + datetime.timedelta(days=1)
-
-        stock = yf.Ticker(ticker)
-
-        df = stock.history(
-            start=start_date,
-            end=end_date,
-            auto_adjust=False
-        )
-
-        if df.empty:
-            return None
-
-        return float(df["Close"].iloc[-1])
-
-    except Exception:
-        return None
-
-
-# ============================================================
-# Yahoo Finance：指定日期收盤價
-# 上市 → .TW
-# 上櫃 → .TWO
-# ============================================================
-
-@st.cache_data(ttl=3600, show_spinner=False)
-def _get_yfinance_close(ticker: str, date: datetime.date):
-    """取得指定日期的 yfinance 收盤價"""
+    """取得指定日期的 yfinance Close"""
 
     try:
         start_date = date
@@ -2194,7 +2159,7 @@ def _load_data_tab9(date: datetime.date) -> pd.DataFrame:
         return df
 
     # --------------------------------------------------------
-    # 排除名稱包含「購」或「售」
+    # 排除名稱包含「購」或「售」的商品
     # --------------------------------------------------------
 
     df = df[
@@ -2207,7 +2172,7 @@ def _load_data_tab9(date: datetime.date) -> pd.DataFrame:
         return df
 
     # --------------------------------------------------------
-    # 使用「第一欄市場」決定 Yahoo ticker
+    # 使用市場決定 Yahoo ticker
     #
     # 上市 → 代號.TW
     # 上櫃 → 代號.TWO
@@ -2230,7 +2195,10 @@ def _load_data_tab9(date: datetime.date) -> pd.DataFrame:
             prices[code] = None
             continue
 
-        # 查詢「指定日期」的收盤價
+        # ----------------------------------------------------
+        # 查詢指定日期收盤價
+        # ----------------------------------------------------
+
         prices[code] = _get_yfinance_close(
             ticker,
             date
@@ -2250,7 +2218,11 @@ def _load_data_tab9(date: datetime.date) -> pd.DataFrame:
     # --------------------------------------------------------
     # 三大法人買賣超金額
     #
-    # 股數 × 當日收盤價 ÷ 1億
+    # 三大法人合計(股)
+    # ×
+    # 當日收盤價
+    # ÷
+    # 100,000,000
     # --------------------------------------------------------
 
     df["買超金額(億)"] = (
@@ -2259,8 +2231,13 @@ def _load_data_tab9(date: datetime.date) -> pd.DataFrame:
         / 100_000_000
     ).round(2)
 
+    # --------------------------------------------------------
     # 收盤價不顯示
-    df = df.drop(columns=["收盤價"])
+    # --------------------------------------------------------
+
+    df = df.drop(
+        columns=["收盤價"]
+    )
 
     return df
 
@@ -2354,7 +2331,7 @@ with tab9:
         )
 
         # ----------------------------------------------------
-        # 搜尋
+        # 搜尋代號或名稱
         # ----------------------------------------------------
 
         keyword = st.text_input(
@@ -2412,7 +2389,7 @@ with tab9:
         )
 
         # ----------------------------------------------------
-        # CSV
+        # CSV 下載
         # ----------------------------------------------------
 
         csv_tab9 = (
