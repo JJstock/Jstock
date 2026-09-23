@@ -432,12 +432,12 @@ tab1, tab2, tab3, tab4, tab5, tab6, tab7 ,tab8,tab9= st.tabs([
     "📊 主監控頁面",
     "📈 題材專區",
     "🏦 金農專區",
+    "📊 三大法人",
     "📈 月營收監控",
     "📊 重訊查詢",
     "🚀 查詢 ETF 成分股",
     "📈 本益比河流圖",
-    "🧮 投資組合分析工具",
-    "📊 三大法人",
+    "🧮 投資組合分析工具"
 ])
 
 if "my_stocks" not in st.session_state:
@@ -2020,6 +2020,73 @@ def _fetch_tpex(roc_date: str) -> list:
     return rows
 
 
+def _fetch_twse_close(yyyymmdd: str) -> dict:
+    """抓上市個股收盤價，回傳 {代號: 收盤價}"""
+    url = (
+        "https://www.twse.com.tw/rwd/zh/afterTrading/MI_INDEX"
+        f"?date={yyyymmdd}&type=ALLBUT0999&response=json"
+    )
+    try:
+        res = requests.get(url, timeout=15)
+        if res.status_code != 200:
+            return {}
+        data = res.json()
+    except Exception:
+        return {}
+
+    price_map = {}
+    for table in data.get("tables", []) or []:
+        fields = table.get("fields") or []
+        if "收盤價" not in fields:
+            continue
+        code_idx = None
+        for cand in ["證券代號", "股票代號", "代號"]:
+            if cand in fields:
+                code_idx = fields.index(cand)
+                break
+        close_idx = fields.index("收盤價")
+        if code_idx is None:
+            continue
+        for row in table.get("data", []) or []:
+            try:
+                code = str(row[code_idx]).strip()
+                price_map[code] = _clean_num(row[close_idx])
+            except Exception:
+                continue
+    return price_map
+
+
+def _fetch_tpex_close(roc_date: str) -> dict:
+    """抓上櫃個股收盤價，回傳 {代號: 收盤價}"""
+    url = (
+        "https://www.tpex.org.tw/web/stock/aftertrading/daily_close_quotes/stk_quote_result.php"
+        f"?l=zh-tw&d={roc_date}&se=EW"
+    )
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+    }
+    try:
+        res = requests.get(url, headers=headers, timeout=15)
+        if res.status_code != 200:
+            return {}
+        data = res.json()
+    except Exception:
+        return {}
+
+    raw_rows = data.get("aaData") or (
+        data.get("tables", [{}])[0].get("data") if data.get("tables") else []
+    ) or []
+
+    price_map = {}
+    for row in raw_rows:
+        try:
+            code = str(row[0]).strip().strip("=").strip('"')
+            price_map[code] = _clean_num(row[2])  # 索引2為收盤價
+        except Exception:
+            continue
+    return price_map
+
+
 @st.cache_data(ttl=600, show_spinner=False)
 def _load_data_tab9(date: datetime.date) -> pd.DataFrame:
     yyyymmdd = date.strftime("%Y%m%d")
@@ -2031,6 +2098,26 @@ def _load_data_tab9(date: datetime.date) -> pd.DataFrame:
     columns = ["市場", "代號", "名稱", "外資買賣超(股)", "投信買賣超(股)",
                "自營商買賣超(股)", "三大法人合計(股)"]
     df = pd.DataFrame(twse_rows + tpex_rows, columns=columns)
+
+    if df.empty:
+        return df
+
+    # 抓收盤價並合併，計算買超金額(億) = 三大法人合計(股) * 收盤價 / 1億
+    twse_price = _fetch_twse_close(yyyymmdd)
+    tpex_price = _fetch_tpex_close(roc_date)
+
+    def get_price(row):
+        code = str(row["代號"]).strip()
+        if row["市場"] == "上市":
+            return twse_price.get(code)
+        return tpex_price.get(code)
+
+    df["收盤價"] = df.apply(get_price, axis=1)
+    df["買超金額(億)"] = (
+        df["三大法人合計(股)"] * df["收盤價"] / 100_000_000
+    ).round(2)
+    df = df.drop(columns=["收盤價"])
+
     return df
 
 
@@ -2071,7 +2158,16 @@ with tab9:
                 | view["名稱"].astype(str).str.contains(keyword, case=False, na=False)
             ]
 
-        st.dataframe(view, use_container_width=True, hide_index=True)
+        st.dataframe(
+            view,
+            use_container_width=True,
+            hide_index=True,
+            column_config={
+                "買超金額(億)": st.column_config.NumberColumn(
+                    "買超金額(億)", format="%.2f"
+                ),
+            },
+        )
 
         csv_tab9 = view.to_csv(index=False).encode("utf-8-sig")
         st.download_button(
