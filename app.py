@@ -1928,253 +1928,515 @@ with tab8:
                     st.error(f"分析失敗：{e}（可能是該股票沒有足夠的季度財報資料）")
 
 
-# ---------- 工具函式（三大法人）----------
+# ============================================================
+# TAB 9：三大法人買賣超
+# ============================================================
+
+# ---------- 工具函式 ----------
 
 def _to_roc_date(date: datetime.date) -> str:
+    """西元日期轉民國日期，例如 2026/09/23 → 115/09/23"""
     y = date.year - 1911
     return f"{y}/{date.month:02d}/{date.day:02d}"
 
 
 def _get_last_trading_date_guess() -> datetime.date:
-    """簡易猜測最後交易日：週六往前一天、週日往前兩天。"""
+    """
+    簡易猜測最後交易日：
+    星期六 → 星期五
+    星期日 → 星期五
+    平日 → 今天
+    """
     today = datetime.date.today()
-    weekday = today.isoweekday()  # 1=Mon ... 7=Sun
+    weekday = today.isoweekday()
+
     if weekday == 6:
         return today - datetime.timedelta(days=1)
+
     if weekday == 7:
         return today - datetime.timedelta(days=2)
+
     return today
 
 
 def _clean_num(v) -> int:
+    """將帶逗號的數字轉成 int"""
     try:
         return int(str(v).replace(",", "").strip() or 0)
     except (ValueError, TypeError):
         return 0
 
 
-# ---------- 抓取 + 解析（三大法人）----------
+# ============================================================
+# TWSE：上市三大法人
+# ============================================================
 
 def _fetch_twse(yyyymmdd: str) -> list:
     url = (
         "https://www.twse.com.tw/rwd/zh/fund/T86"
         f"?date={yyyymmdd}&selectType=ALL&response=json"
     )
+
     try:
         res = requests.get(url, timeout=15)
+
         if res.status_code != 200:
             return []
+
         data = res.json()
+
         if data.get("stat") != "OK" or not data.get("data"):
             return []
+
     except Exception:
         return []
 
     rows = []
+
     for row in data["data"]:
+
         rows.append([
             "上市",
-            row[0],                                       # 代號
-            row[1],                                       # 名稱
-            _clean_num(row[4]) + _clean_num(row[7]),      # 外資買賣超
-            _clean_num(row[10]),                          # 投信買賣超
-            _clean_num(row[11]),                          # 自營商買賣超
-            _clean_num(row[18]),                          # 三大法人合計
+            row[0],                                  # 代號
+            row[1],                                  # 名稱
+
+            # 外資買賣超
+            _clean_num(row[4]) + _clean_num(row[7]),
+
+            # 投信
+            _clean_num(row[10]),
+
+            # 自營商
+            _clean_num(row[11]),
+
+            # 三大法人合計
+            _clean_num(row[18]),
         ])
+
     return rows
 
 
+# ============================================================
+# TPEX：上櫃三大法人
+# ============================================================
+
 def _fetch_tpex(roc_date: str) -> list:
+
     url = (
-        "https://www.tpex.org.tw/web/stock/3insti/daily_trade/3itrade_hedge_result.php"
+        "https://www.tpex.org.tw/web/stock/3insti/daily_trade/"
+        "3itrade_hedge_result.php"
         f"?l=zh-tw&o=json&se=EW&t=D&d={roc_date}&s=0,asc"
     )
+
     headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+        "User-Agent":
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+            "AppleWebKit/537.36"
     }
+
     try:
-        res = requests.get(url, headers=headers, timeout=15)
+        res = requests.get(
+            url,
+            headers=headers,
+            timeout=15
+        )
+
         if res.status_code != 200:
             return []
+
         data = res.json()
+
     except Exception:
         return []
 
-    raw_rows = data.get("aaData") or (
-        data.get("tables", [{}])[0].get("data") if data.get("tables") else []
-    ) or []
+    raw_rows = (
+        data.get("aaData")
+        or (
+            data.get("tables", [{}])[0].get("data")
+            if data.get("tables")
+            else []
+        )
+        or []
+    )
+
     if not raw_rows:
         return []
 
     rows = []
+
     for row in raw_rows:
+
         rows.append([
             "上櫃",
-            row[0],                                       # 代號
-            row[1],                                       # 名稱
-            _clean_num(row[4]) + _clean_num(row[7]),      # 外資買賣超
-            _clean_num(row[13]),                          # 投信買賣超
-            _clean_num(row[22]),                          # 自營商買賣超
-            _clean_num(row[23]),                          # 三大法人合計
+            row[0],                                  # 代號
+            row[1],                                  # 名稱
+
+            # 外資買賣超
+            _clean_num(row[4]) + _clean_num(row[7]),
+
+            # 投信
+            _clean_num(row[13]),
+
+            # 自營商
+            _clean_num(row[22]),
+
+            # 三大法人合計
+            _clean_num(row[23]),
         ])
+
     return rows
 
 
-def _fetch_twse_close(yyyymmdd: str) -> dict:
-    """抓上市個股收盤價，回傳 {代號: 收盤價}"""
-    url = (
-        "https://www.twse.com.tw/rwd/zh/afterTrading/MI_INDEX"
-        f"?date={yyyymmdd}&type=ALLBUT0999&response=json"
-    )
+# ============================================================
+# Yahoo Finance：指定日期收盤價
+# ============================================================
+
+@st.cache_data(ttl=3600, show_spinner=False)
+def _get_yfinance_close(
+    ticker: str,
+    date: datetime.date
+):
+    """
+    使用 yfinance 取得「指定日期」收盤價。
+
+    例如：
+    2026/09/22
+    → 只抓 2026/09/22 的 Close
+    """
+
     try:
-        res = requests.get(url, timeout=15)
-        if res.status_code != 200:
-            return {}
-        data = res.json()
+
+        start_date = date
+        end_date = date + datetime.timedelta(days=1)
+
+        stock = yf.Ticker(ticker)
+
+        df = stock.history(
+            start=start_date,
+            end=end_date,
+            auto_adjust=False
+        )
+
+        if df.empty:
+            return None
+
+        return float(df["Close"].iloc[-1])
+
     except Exception:
-        return {}
-
-    price_map = {}
-    for table in data.get("tables", []) or []:
-        fields = table.get("fields") or []
-        if "收盤價" not in fields:
-            continue
-        code_idx = None
-        for cand in ["證券代號", "股票代號", "代號"]:
-            if cand in fields:
-                code_idx = fields.index(cand)
-                break
-        close_idx = fields.index("收盤價")
-        if code_idx is None:
-            continue
-        for row in table.get("data", []) or []:
-            try:
-                code = str(row[code_idx]).strip()
-                price_map[code] = _clean_num(row[close_idx])
-            except Exception:
-                continue
-    return price_map
+        return None
 
 
-def _fetch_tpex_close(roc_date: str) -> dict:
-    """抓上櫃個股收盤價，回傳 {代號: 收盤價}"""
-    url = (
-        "https://www.tpex.org.tw/web/stock/aftertrading/daily_close_quotes/stk_quote_result.php"
-        f"?l=zh-tw&d={roc_date}&se=EW"
-    )
-    headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
-    }
-    try:
-        res = requests.get(url, headers=headers, timeout=15)
-        if res.status_code != 200:
-            return {}
-        data = res.json()
-    except Exception:
-        return {}
-
-    raw_rows = data.get("aaData") or (
-        data.get("tables", [{}])[0].get("data") if data.get("tables") else []
-    ) or []
-
-    price_map = {}
-    for row in raw_rows:
-        try:
-            code = str(row[0]).strip().strip("=").strip('"')
-            price_map[code] = _clean_num(row[2])  # 索引2為收盤價
-        except Exception:
-            continue
-    return price_map
-
+# ============================================================
+# TAB 9 主資料
+# ============================================================
 
 @st.cache_data(ttl=600, show_spinner=False)
 def _load_data_tab9(date: datetime.date) -> pd.DataFrame:
+
     yyyymmdd = date.strftime("%Y%m%d")
     roc_date = _to_roc_date(date)
+
+    # --------------------------------------------------------
+    # 抓三大法人資料
+    # --------------------------------------------------------
 
     twse_rows = _fetch_twse(yyyymmdd)
     tpex_rows = _fetch_tpex(roc_date)
 
-    columns = ["市場", "代號", "名稱", "外資買賣超(股)", "投信買賣超(股)",
-               "自營商買賣超(股)", "三大法人合計(股)"]
-    df = pd.DataFrame(twse_rows + tpex_rows, columns=columns)
+    columns = [
+        "市場",
+        "代號",
+        "名稱",
+        "外資買賣超(股)",
+        "投信買賣超(股)",
+        "自營商買賣超(股)",
+        "三大法人合計(股)"
+    ]
+
+    df = pd.DataFrame(
+        twse_rows + tpex_rows,
+        columns=columns
+    )
 
     if df.empty:
         return df
 
-    # 抓收盤價並合併，計算買超金額(億) = 三大法人合計(股) * 收盤價 / 1億
-    twse_price = _fetch_twse_close(yyyymmdd)
-    tpex_price = _fetch_tpex_close(roc_date)
+    # --------------------------------------------------------
+    # 移除名稱包含「購」或「售」的商品
+    # --------------------------------------------------------
 
-    def get_price(row):
-        code = str(row["代號"]).strip()
-        if row["市場"] == "上市":
-            return twse_price.get(code)
-        return tpex_price.get(code)
+    df = df[
+        ~df["名稱"]
+        .astype(str)
+        .str.contains("購|售", na=False)
+    ].copy()
 
-    df["收盤價"] = df.apply(get_price, axis=1)
+    if df.empty:
+        return df
+
+    # --------------------------------------------------------
+    # 使用 yfinance 取得「查詢日期當天」收盤價
+    # --------------------------------------------------------
+
+    prices = {}
+
+    codes = (
+        df["代號"]
+        .astype(str)
+        .str.strip()
+        .unique()
+    )
+
+    for code in codes:
+
+        code = code.strip()
+
+        # 找出市場
+        market_rows = df.loc[
+            df["代號"].astype(str).str.strip() == code,
+            "市場"
+        ]
+
+        if market_rows.empty:
+            continue
+
+        market = market_rows.iloc[0]
+
+        # 上市 → .TW
+        # 上櫃 → .TWO
+        if market == "上市":
+            ticker = f"{code}.TW"
+            fallback = f"{code}.TWO"
+        else:
+            ticker = f"{code}.TWO"
+            fallback = f"{code}.TW"
+
+        # ----------------------------------------------------
+        # 先抓主要市場
+        # ----------------------------------------------------
+
+        price = _get_yfinance_close(
+            ticker,
+            date
+        )
+
+        # ----------------------------------------------------
+        # 沒資料 → 嘗試另一市場
+        # ----------------------------------------------------
+
+        if price is None:
+
+            price = _get_yfinance_close(
+                fallback,
+                date
+            )
+
+        prices[code] = price
+
+    # --------------------------------------------------------
+    # 加入收盤價
+    # --------------------------------------------------------
+
+    df["收盤價"] = (
+        df["代號"]
+        .astype(str)
+        .str.strip()
+        .map(prices)
+    )
+
+    # --------------------------------------------------------
+    # 計算三大法人買超金額
+    #
+    # 三大法人合計(股)
+    # ×
+    # 查詢日期當天 Close
+    # ÷ 1億
+    # --------------------------------------------------------
+
     df["買超金額(億)"] = (
-        df["三大法人合計(股)"] * df["收盤價"] / 100_000_000
+        df["三大法人合計(股)"]
+        * df["收盤價"]
+        / 100_000_000
     ).round(2)
-    df = df.drop(columns=["收盤價"])
+
+    # --------------------------------------------------------
+    # 收盤價不顯示在 TAB 9
+    # --------------------------------------------------------
+
+    df = df.drop(
+        columns=["收盤價"]
+    )
 
     return df
 
 
-# ---------- TAB 9: 三大法人買賣超（新版）----------
+# ============================================================
+# TAB 9：三大法人買賣超
+# ============================================================
+
 with tab9:
+
     st.subheader("三大法人買賣超")
 
+    # --------------------------------------------------------
+    # 預設日期
+    # --------------------------------------------------------
+
     default_date = _get_last_trading_date_guess()
+
     col1, col2 = st.columns([1, 3])
+
     with col1:
-        tab9_date = st.date_input("查詢日期", value=default_date, key="tab9_date")
+
+        tab9_date = st.date_input(
+            "查詢日期",
+            value=default_date,
+            key="tab9_date"
+        )
+
     with col2:
+
         st.write("")
         st.write("")
-        tab9_refresh = st.button("重新抓取", key="tab9_refresh")
+
+        tab9_refresh = st.button(
+            "重新抓取",
+            key="tab9_refresh"
+        )
+
+    # --------------------------------------------------------
+    # 重新抓取
+    # --------------------------------------------------------
 
     if tab9_refresh:
+
         _load_data_tab9.clear()
+        _get_yfinance_close.clear()
+
+    # --------------------------------------------------------
+    # 抓資料
+    # --------------------------------------------------------
 
     with st.spinner("抓取中..."):
-        df_tab9 = _load_data_tab9(tab9_date)
-    # 排除名稱包含「購」或「售」的商品
-    df_tab9 = df_tab9[
-        ~df_tab9["名稱"].astype(str).str.contains("購|售", na=False)
-    ].copy()
+
+        df_tab9 = _load_data_tab9(
+            tab9_date
+        )
+
+    # --------------------------------------------------------
+    # 無資料
+    # --------------------------------------------------------
+
     if df_tab9.empty:
-        st.warning("查無資料，請確認日期是否為交易日，或稍後再試。")
+
+        st.warning(
+            "查無資料，請確認日期是否為交易日，或稍後再試。"
+        )
+
     else:
-        st.caption(f"共 {len(df_tab9)} 筆 | 資料來源：TWSE / TPEX")
+
+        st.caption(
+            f"共 {len(df_tab9)} 筆 | "
+            f"資料來源：TWSE / TPEX / Yahoo Finance"
+        )
+
+        # ----------------------------------------------------
+        # 市場篩選
+        # ----------------------------------------------------
 
         market_filter = st.multiselect(
-            "市場別", options=sorted(df_tab9["市場"].unique()),
-            default=sorted(df_tab9["市場"].unique()), key="tab9_market"
-        )
-        keyword = st.text_input("搜尋代號或名稱", key="tab9_search")
+            "市場別",
 
-        view = df_tab9[df_tab9["市場"].isin(market_filter)]
+            options=sorted(
+                df_tab9["市場"].unique()
+            ),
+
+            default=sorted(
+                df_tab9["市場"].unique()
+            ),
+
+            key="tab9_market"
+        )
+
+        # ----------------------------------------------------
+        # 搜尋
+        # ----------------------------------------------------
+
+        keyword = st.text_input(
+            "搜尋代號或名稱",
+            key="tab9_search"
+        )
+
+        # ----------------------------------------------------
+        # 篩選資料
+        # ----------------------------------------------------
+
+        view = df_tab9[
+            df_tab9["市場"].isin(
+                market_filter
+            )
+        ]
+
         if keyword:
+
             view = view[
-                view["代號"].astype(str).str.contains(keyword, case=False, na=False)
-                | view["名稱"].astype(str).str.contains(keyword, case=False, na=False)
+                view["代號"]
+                .astype(str)
+                .str.contains(
+                    keyword,
+                    case=False,
+                    na=False
+                )
+                |
+                view["名稱"]
+                .astype(str)
+                .str.contains(
+                    keyword,
+                    case=False,
+                    na=False
+                )
             ]
+
+        # ----------------------------------------------------
+        # 顯示資料
+        # ----------------------------------------------------
 
         st.dataframe(
             view,
             use_container_width=True,
             hide_index=True,
+
             column_config={
+
                 "買超金額(億)": st.column_config.NumberColumn(
-                    "買超金額(億)", format="%.2f"
+                    "買超金額(億)",
+                    format="%.2f"
                 ),
+
             },
         )
 
-        csv_tab9 = view.to_csv(index=False).encode("utf-8-sig")
+        # ----------------------------------------------------
+        # CSV
+        # ----------------------------------------------------
+
+        csv_tab9 = (
+            view
+            .to_csv(index=False)
+            .encode("utf-8-sig")
+        )
+
         st.download_button(
-            "下載 CSV", data=csv_tab9,
-            file_name=f"三大法人_{tab9_date.strftime('%Y%m%d')}.csv",
-            mime="text/csv", key="tab9_download"
+            "下載 CSV",
+
+            data=csv_tab9,
+
+            file_name=(
+                f"三大法人_"
+                f"{tab9_date.strftime('%Y%m%d')}.csv"
+            ),
+
+            mime="text/csv",
+
+            key="tab9_download"
         )
