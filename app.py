@@ -2139,7 +2139,10 @@ with tab9:
 
     with st.spinner("抓取中..."):
         df_tab9 = _load_data_tab9(tab9_date)
-
+    # 排除名稱包含「購」或「售」的商品
+    df_tab9 = df_tab9[
+        ~df_tab9["名稱"].astype(str).str.contains("購|售", na=False)
+    ].copy()
     if df_tab9.empty:
         st.warning("查無資料，請確認日期是否為交易日，或稍後再試。")
     else:
