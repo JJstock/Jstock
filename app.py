@@ -1930,9 +1930,8 @@ with tab8:
 
 # ============================================================
 # TAB 9：三大法人買賣超
+# 高速批次版
 # ============================================================
-
-# ---------- 工具函式 ----------
 
 def _to_roc_date(date: datetime.date) -> str:
     """西元日期轉民國日期，例如 2026/09/23 → 115/09/23"""
@@ -1941,12 +1940,7 @@ def _to_roc_date(date: datetime.date) -> str:
 
 
 def _get_last_trading_date_guess() -> datetime.date:
-    """
-    簡易猜測最後交易日：
-    星期六 → 星期五
-    星期日 → 星期五
-    平日 → 今天
-    """
+    """預設日期：週一～週五今天，週六回到週五，週日回到週五"""
     today = datetime.date.today()
     weekday = today.isoweekday()
 
@@ -1960,7 +1954,7 @@ def _get_last_trading_date_guess() -> datetime.date:
 
 
 def _clean_num(v) -> int:
-    """將帶逗號的數字轉成 int"""
+    """將含逗號的數字轉成 int"""
     try:
         return int(str(v).replace(",", "").strip() or 0)
     except (ValueError, TypeError):
@@ -1968,10 +1962,13 @@ def _clean_num(v) -> int:
 
 
 # ============================================================
-# TWSE：上市三大法人
+# TWSE 上市
 # ============================================================
 
 def _fetch_twse(yyyymmdd: str) -> list:
+    """
+    取得 TWSE 三大法人買賣超
+    """
     url = (
         "https://www.twse.com.tw/rwd/zh/fund/T86"
         f"?date={yyyymmdd}&selectType=ALL&response=json"
@@ -1997,10 +1994,10 @@ def _fetch_twse(yyyymmdd: str) -> list:
 
         rows.append([
             "上市",
-            row[0],                                  # 代號
-            row[1],                                  # 名稱
+            row[0],
+            row[1],
 
-            # 外資買賣超
+            # 外資
             _clean_num(row[4]) + _clean_num(row[7]),
 
             # 投信
@@ -2017,10 +2014,13 @@ def _fetch_twse(yyyymmdd: str) -> list:
 
 
 # ============================================================
-# TPEX：上櫃三大法人
+# TPEX 上櫃
 # ============================================================
 
 def _fetch_tpex(roc_date: str) -> list:
+    """
+    取得 TPEX 三大法人買賣超
+    """
 
     url = (
         "https://www.tpex.org.tw/web/stock/3insti/daily_trade/"
@@ -2068,10 +2068,10 @@ def _fetch_tpex(roc_date: str) -> list:
 
         rows.append([
             "上櫃",
-            row[0],                                  # 代號
-            row[1],                                  # 名稱
+            row[0],
+            row[1],
 
-            # 外資買賣超
+            # 外資
             _clean_num(row[4]) + _clean_num(row[7]),
 
             # 投信
@@ -2088,39 +2088,94 @@ def _fetch_tpex(roc_date: str) -> list:
 
 
 # ============================================================
-# Yahoo Finance：指定日期收盤價
-#
-# 上市 → .TW
-# 上櫃 → .TWO
+# Yahoo Finance 批次抓指定日期 Close
 # ============================================================
 
 @st.cache_data(ttl=3600, show_spinner=False)
-def _get_yfinance_close(
-    ticker: str,
+def _get_yfinance_prices(
+    tickers: tuple,
     date: datetime.date
-):
-    """取得指定日期的 yfinance Close"""
+) -> dict:
+    """
+    一次批次取得所有股票指定日期的 Yahoo Finance Close。
+
+    上市：
+        2330.TW
+
+    上櫃：
+        6488.TWO
+
+    不做 .TW / .TWO fallback。
+    """
+
+    if not tickers:
+        return {}
 
     try:
+
         start_date = date
         end_date = date + datetime.timedelta(days=1)
 
-        stock = yf.Ticker(ticker)
-
-        df = stock.history(
+        data = yf.download(
+            tickers=list(tickers),
             start=start_date,
             end=end_date,
-            interval="1d",
-            auto_adjust=False
+            auto_adjust=False,
+            progress=False,
+            threads=True,
+            group_by="column"
         )
 
-        if df.empty:
-            return None
+        if data.empty:
+            return {}
 
-        return float(df["Close"].iloc[-1])
+        prices = {}
+
+        # ====================================================
+        # 多檔股票
+        # ====================================================
+
+        if isinstance(data.columns, pd.MultiIndex):
+
+            level0 = data.columns.get_level_values(0)
+
+            if "Close" not in level0:
+                return {}
+
+            close_df = data["Close"]
+
+            for ticker in tickers:
+
+                try:
+
+                    if ticker not in close_df.columns:
+                        continue
+
+                    series = close_df[ticker].dropna()
+
+                    if not series.empty:
+                        prices[ticker] = float(series.iloc[-1])
+
+                except Exception:
+                    continue
+
+        # ====================================================
+        # 單檔股票
+        # ====================================================
+
+        else:
+
+            if "Close" in data.columns:
+
+                series = data["Close"].dropna()
+
+                if not series.empty:
+                    prices[tickers[0]] = float(series.iloc[-1])
+
+        return prices
 
     except Exception:
-        return None
+        return {}
 
 
 # ============================================================
@@ -2133,9 +2188,9 @@ def _load_data_tab9(date: datetime.date) -> pd.DataFrame:
     yyyymmdd = date.strftime("%Y%m%d")
     roc_date = _to_roc_date(date)
 
-    # --------------------------------------------------------
-    # 抓上市、上櫃三大法人
-    # --------------------------------------------------------
+    # ========================================================
+    # 抓上市 / 上櫃
+    # ========================================================
 
     twse_rows = _fetch_twse(yyyymmdd)
     tpex_rows = _fetch_tpex(roc_date)
@@ -2158,9 +2213,10 @@ def _load_data_tab9(date: datetime.date) -> pd.DataFrame:
     if df.empty:
         return df
 
-    # --------------------------------------------------------
-    # 排除名稱包含「購」或「售」的商品
-    # --------------------------------------------------------
+    # ========================================================
+    # 排除權證
+    # 名稱包含「購」或「售」直接排除
+    # ========================================================
 
     df = df[
         ~df["名稱"]
@@ -2171,14 +2227,16 @@ def _load_data_tab9(date: datetime.date) -> pd.DataFrame:
     if df.empty:
         return df
 
-    # --------------------------------------------------------
-    # 使用市場決定 Yahoo ticker
+    # ========================================================
+    # 建立 ticker
     #
-    # 上市 → 代號.TW
-    # 上櫃 → 代號.TWO
-    # --------------------------------------------------------
+    # 上市 → .TW
+    # 上櫃 → .TWO
+    #
+    # 不做 fallback
+    # ========================================================
 
-    prices = {}
+    ticker_map = {}
 
     for _, row in df.iterrows():
 
@@ -2192,38 +2250,47 @@ def _load_data_tab9(date: datetime.date) -> pd.DataFrame:
             ticker = f"{code}.TWO"
 
         else:
-            prices[code] = None
             continue
 
-        # ----------------------------------------------------
-        # 查詢指定日期收盤價
-        # ----------------------------------------------------
+        ticker_map[(market, code)] = ticker
 
-        prices[code] = _get_yfinance_close(
-            ticker,
-            date
-        )
+    # ========================================================
+    # 一次取得所有 Yahoo Finance Close
+    # ========================================================
 
-    # --------------------------------------------------------
-    # 加入指定日期收盤價
-    # --------------------------------------------------------
-
-    df["收盤價"] = (
-        df["代號"]
-        .astype(str)
-        .str.strip()
-        .map(prices)
+    tickers = tuple(
+        sorted(set(ticker_map.values()))
     )
 
-    # --------------------------------------------------------
-    # 三大法人買賣超金額
+    prices = _get_yfinance_prices(
+        tickers,
+        date
+    )
+
+    # ========================================================
+    # 將 Close 回填到 DataFrame
+    # ========================================================
+
+    df["收盤價"] = [
+        prices.get(
+            ticker_map.get(
+                (
+                    str(row["市場"]).strip(),
+                    str(row["代號"]).strip()
+                )
+            )
+        )
+        for _, row in df.iterrows()
+    ]
+
+    # ========================================================
+    # 三大法人買超金額
     #
-    # 三大法人合計(股)
-    # ×
-    # 當日收盤價
-    # ÷
-    # 100,000,000
-    # --------------------------------------------------------
+    # 股數 × 當日 Close ÷ 1億
+    #
+    # 正數 = 買超
+    # 負數 = 賣超
+    # ========================================================
 
     df["買超金額(億)"] = (
         df["三大法人合計(股)"]
@@ -2231,9 +2298,9 @@ def _load_data_tab9(date: datetime.date) -> pd.DataFrame:
         / 100_000_000
     ).round(2)
 
-    # --------------------------------------------------------
-    # 收盤價不顯示
-    # --------------------------------------------------------
+    # ========================================================
+    # 不顯示收盤價欄位
+    # ========================================================
 
     df = df.drop(
         columns=["收盤價"]
@@ -2243,16 +2310,16 @@ def _load_data_tab9(date: datetime.date) -> pd.DataFrame:
 
 
 # ============================================================
-# TAB 9：三大法人買賣超
+# TAB 9 UI
 # ============================================================
 
 with tab9:
 
     st.subheader("三大法人買賣超")
 
-    # --------------------------------------------------------
-    # 預設日期
-    # --------------------------------------------------------
+    # ========================================================
+    # 日期
+    # ========================================================
 
     default_date = _get_last_trading_date_guess()
 
@@ -2276,28 +2343,28 @@ with tab9:
             key="tab9_refresh"
         )
 
-    # --------------------------------------------------------
+    # ========================================================
     # 重新抓取
-    # --------------------------------------------------------
+    # ========================================================
 
     if tab9_refresh:
 
         _load_data_tab9.clear()
-        _get_yfinance_close.clear()
+        _get_yfinance_prices.clear()
 
-    # --------------------------------------------------------
-    # 抓資料
-    # --------------------------------------------------------
+    # ========================================================
+    # 抓取資料
+    # ========================================================
 
-    with st.spinner("抓取中..."):
+    with st.spinner("抓取三大法人資料中..."):
 
         df_tab9 = _load_data_tab9(
             tab9_date
         )
 
-    # --------------------------------------------------------
+    # ========================================================
     # 無資料
-    # --------------------------------------------------------
+    # ========================================================
 
     if df_tab9.empty:
 
@@ -2312,36 +2379,33 @@ with tab9:
             f"資料來源：TWSE / TPEX / Yahoo Finance"
         )
 
-        # ----------------------------------------------------
+        # ====================================================
         # 市場篩選
-        # ----------------------------------------------------
+        # ====================================================
 
         market_filter = st.multiselect(
             "市場別",
-
             options=sorted(
                 df_tab9["市場"].unique()
             ),
-
             default=sorted(
                 df_tab9["市場"].unique()
             ),
-
             key="tab9_market"
         )
 
-        # ----------------------------------------------------
-        # 搜尋代號或名稱
-        # ----------------------------------------------------
+        # ====================================================
+        # 關鍵字
+        # ====================================================
 
         keyword = st.text_input(
             "搜尋代號或名稱",
             key="tab9_search"
         )
 
-        # ----------------------------------------------------
-        # 篩選資料
-        # ----------------------------------------------------
+        # ====================================================
+        # 篩選
+        # ====================================================
 
         view = df_tab9[
             df_tab9["市場"].isin(
@@ -2369,15 +2433,14 @@ with tab9:
                 )
             ]
 
-        # ----------------------------------------------------
-        # 顯示資料
-        # ----------------------------------------------------
+        # ====================================================
+        # 顯示
+        # ====================================================
 
         st.dataframe(
             view,
             use_container_width=True,
             hide_index=True,
-
             column_config={
 
                 "買超金額(億)": st.column_config.NumberColumn(
@@ -2385,30 +2448,43 @@ with tab9:
                     format="%.2f"
                 ),
 
-            },
+                "外資買賣超(股)": st.column_config.NumberColumn(
+                    "外資買賣超(股)",
+                    format="%d"
+                ),
+
+                "投信買賣超(股)": st.column_config.NumberColumn(
+                    "投信買賣超(股)",
+                    format="%d"
+                ),
+
+                "自營商買賣超(股)": st.column_config.NumberColumn(
+                    "自營商買賣超(股)",
+                    format="%d"
+                ),
+
+                "三大法人合計(股)": st.column_config.NumberColumn(
+                    "三大法人合計(股)",
+                    format="%d"
+                ),
+            }
         )
 
-        # ----------------------------------------------------
-        # CSV 下載
-        # ----------------------------------------------------
+        # ====================================================
+        # CSV
+        # ====================================================
 
-        csv_tab9 = (
-            view
-            .to_csv(index=False)
-            .encode("utf-8-sig")
-        )
+        csv_tab9 = view.to_csv(
+            index=False
+        ).encode("utf-8-sig")
 
         st.download_button(
             "下載 CSV",
-
             data=csv_tab9,
-
             file_name=(
                 f"三大法人_"
                 f"{tab9_date.strftime('%Y%m%d')}.csv"
             ),
-
             mime="text/csv",
-
             key="tab9_download"
         )
