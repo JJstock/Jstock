@@ -2127,6 +2127,38 @@ def _get_yfinance_close(
 
 
 # ============================================================
+# Yahoo Finance：指定日期收盤價
+# 上市 → .TW
+# 上櫃 → .TWO
+# ============================================================
+
+@st.cache_data(ttl=3600, show_spinner=False)
+def _get_yfinance_close(ticker: str, date: datetime.date):
+    """取得指定日期的 yfinance 收盤價"""
+
+    try:
+        start_date = date
+        end_date = date + datetime.timedelta(days=1)
+
+        stock = yf.Ticker(ticker)
+
+        df = stock.history(
+            start=start_date,
+            end=end_date,
+            interval="1d",
+            auto_adjust=False
+        )
+
+        if df.empty:
+            return None
+
+        return float(df["Close"].iloc[-1])
+
+    except Exception:
+        return None
+
+
+# ============================================================
 # TAB 9 主資料
 # ============================================================
 
@@ -2137,7 +2169,7 @@ def _load_data_tab9(date: datetime.date) -> pd.DataFrame:
     roc_date = _to_roc_date(date)
 
     # --------------------------------------------------------
-    # 抓三大法人資料
+    # 抓上市、上櫃三大法人
     # --------------------------------------------------------
 
     twse_rows = _fetch_twse(yyyymmdd)
@@ -2162,7 +2194,7 @@ def _load_data_tab9(date: datetime.date) -> pd.DataFrame:
         return df
 
     # --------------------------------------------------------
-    # 移除名稱包含「購」或「售」的商品
+    # 排除名稱包含「購」或「售」
     # --------------------------------------------------------
 
     df = df[
@@ -2175,66 +2207,37 @@ def _load_data_tab9(date: datetime.date) -> pd.DataFrame:
         return df
 
     # --------------------------------------------------------
-    # 使用 yfinance 取得「查詢日期當天」收盤價
+    # 使用「第一欄市場」決定 Yahoo ticker
+    #
+    # 上市 → 代號.TW
+    # 上櫃 → 代號.TWO
     # --------------------------------------------------------
 
     prices = {}
 
-    codes = (
-        df["代號"]
-        .astype(str)
-        .str.strip()
-        .unique()
-    )
+    for _, row in df.iterrows():
 
-    for code in codes:
+        market = str(row["市場"]).strip()
+        code = str(row["代號"]).strip()
 
-        code = code.strip()
-
-        # 找出市場
-        market_rows = df.loc[
-            df["代號"].astype(str).str.strip() == code,
-            "市場"
-        ]
-
-        if market_rows.empty:
-            continue
-
-        market = market_rows.iloc[0]
-
-        # 上市 → .TW
-        # 上櫃 → .TWO
         if market == "上市":
             ticker = f"{code}.TW"
-            fallback = f"{code}.TWO"
-        else:
+
+        elif market == "上櫃":
             ticker = f"{code}.TWO"
-            fallback = f"{code}.TW"
 
-        # ----------------------------------------------------
-        # 先抓主要市場
-        # ----------------------------------------------------
+        else:
+            prices[code] = None
+            continue
 
-        price = _get_yfinance_close(
+        # 查詢「指定日期」的收盤價
+        prices[code] = _get_yfinance_close(
             ticker,
             date
         )
 
-        # ----------------------------------------------------
-        # 沒資料 → 嘗試另一市場
-        # ----------------------------------------------------
-
-        if price is None:
-
-            price = _get_yfinance_close(
-                fallback,
-                date
-            )
-
-        prices[code] = price
-
     # --------------------------------------------------------
-    # 加入收盤價
+    # 加入指定日期收盤價
     # --------------------------------------------------------
 
     df["收盤價"] = (
@@ -2245,12 +2248,9 @@ def _load_data_tab9(date: datetime.date) -> pd.DataFrame:
     )
 
     # --------------------------------------------------------
-    # 計算三大法人買超金額
+    # 三大法人買賣超金額
     #
-    # 三大法人合計(股)
-    # ×
-    # 查詢日期當天 Close
-    # ÷ 1億
+    # 股數 × 當日收盤價 ÷ 1億
     # --------------------------------------------------------
 
     df["買超金額(億)"] = (
@@ -2259,13 +2259,8 @@ def _load_data_tab9(date: datetime.date) -> pd.DataFrame:
         / 100_000_000
     ).round(2)
 
-    # --------------------------------------------------------
-    # 收盤價不顯示在 TAB 9
-    # --------------------------------------------------------
-
-    df = df.drop(
-        columns=["收盤價"]
-    )
+    # 收盤價不顯示
+    df = df.drop(columns=["收盤價"])
 
     return df
 
