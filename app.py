@@ -3970,13 +3970,13 @@ if not stock_pool:
 # TAB 1 股票清單顯示
 # ============================================================
 with tab10:
-st.subheader("📊 台股 100 分多因子評分")
+    st.subheader("📊 台股 100 分多因子評分")
 
 
-st.caption(
-    f"目前監控股票：{len(stock_pool)} 檔｜"
-    "Yahoo Finance 快取 1 小時｜"
-    "TAB 4 / TAB 9 直接使用既有資料"
+    st.caption(
+        f"目前監控股票：{len(stock_pool)} 檔｜"
+        "Yahoo Finance 快取 1 小時｜"
+        "TAB 4 / TAB 9 直接使用既有資料"
 )
 
 
