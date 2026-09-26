@@ -12,7 +12,7 @@ import requests
 import streamlit as st
 import yfinance as yf
 import os
-
+import re
 st.set_page_config(page_title="Jstok股價監控", layout="wide")
 st.title("JStok 📊 MA20+60 與財報監控")
 
