@@ -2495,87 +2495,78 @@ with tab9:
             key="tab9_download"
         )
 
-
+# ============================================================
+# TAB 10：台股 100 分多因子評分 V3
+# ============================================================
+# ============================================================
+# 1. 評分權重
+# ============================================================
 with tab10:
-    # ============================================================
-    # TAB 10：台股 100 分多因子評分 V3
-    # 1. 獲利能力       25 分
-    # 2. 成長性         20 分
-    # 3. 評價           15 分
-    # 4. 技術面         15 分
-    # 5. 籌碼面         15 分
-    # 6. 低波風險       10 分
-    # ------------------------------------------------------------
-    # 重要：
-    # 「三率三升」完全使用 TAB 4 的 revenue_data
-    # TAB 4 的三率三升來源為 rate.csv
-    # TAB 10 不重新抓 API、不重新計算
-    # ============================================================
-    
-    
-    # ============================================================
-    # 1. 評分權重
-    # ============================================================
-    
     SCORE_WEIGHTS = {
     
         # --------------------------------------------------------
-        # 獲利能力 25
+        # 獲利能力 25 分
         # --------------------------------------------------------
         "獲利能力": {
-            "ROE": 8,
-            "ROA": 5,
-            "營業利益率": 6,
-            "EPS": 6,
+            "total": 25,
+            "roe": 8,
+            "roa": 5,
+            "operating_margin": 6,
+            "eps": 6,
         },
     
         # --------------------------------------------------------
-        # 成長性 20
+        # 成長性 20 分
         # --------------------------------------------------------
         "成長性": {
-            "營收成長": 7,
-            "EPS成長": 8,
-            "三率三升": 5,
+            "total": 20,
+            "revenue_growth": 7,
+            "eps_growth": 8,
+            "triple_rise": 5,
         },
     
         # --------------------------------------------------------
-        # 評價 15
+        # 評價 15 分
         # --------------------------------------------------------
         "評價": {
-            "PE": 7,
-            "PB": 4,
-            "PEG": 4,
+            "total": 15,
+            "pe": 7,
+            "pb": 4,
+            "peg": 4,
         },
     
         # --------------------------------------------------------
-        # 技術面 15
+        # 技術面 15 分
         # --------------------------------------------------------
         "技術面": {
-            "股價 > MA20": 3,
-            "MA20 > MA60": 4,
-            "股價 > MA120": 3,
-            "MA60 > MA120": 3,
-            "20日趨勢": 2,
+            "total": 15,
+            "price_ma20": 3,
+            "ma20_ma60": 4,
+            "price_ma120": 3,
+            "ma60_ma120": 3,
+            "trend20": 2,
         },
     
         # --------------------------------------------------------
-        # 籌碼面 15
+        # 籌碼面 15 分
         # --------------------------------------------------------
         "籌碼面": {
-            "外資": 5,
-            "投信": 5,
-            "自營商": 2,
-            "三大法人": 3,
+            "total": 15,
+            "foreign": 5,
+            "trust": 5,
+            "dealer": 2,
+            "institutional_total": 3,
         },
     
         # --------------------------------------------------------
-        # 低波風險 10
+        # 低波風險 10 分
         # --------------------------------------------------------
         "低波風險": {
-            "3個月波動": 3,
-            "6個月波動": 3,
-            "1年波動": 2,
-            "最大回撤": 2,
+            "total": 10,
+            "vol_3m": 3,
+            "vol_6m": 3,
+            "vol_1y": 2,
+            "max_drawdown": 2,
         },
     }
     
@@ -2584,62 +2575,1234 @@ with tab10:
     # 2. 工具函式
     # ============================================================
     
-    def score_safe_float(value):
+    def safe_float(value):
         """
-        安全轉換數字
+        將資料安全轉成 float
         """
+    
+        if value is None:
+            return np.nan
+    
         try:
-    
-            if value is None:
+            if pd.isna(value):
                 return np.nan
-    
-            if isinstance(value, str):
-    
-                value = (
-                    value
-                    .replace(",", "")
-                    .replace("%", "")
-                    .strip()
-                )
-    
-                if value in ["", "-", "--", "None", "nan", "NaN"]:
-                    return np.nan
-    
-            return float(value)
-    
         except Exception:
+            pass
     
+        try:
+            return float(value)
+        except Exception:
             return np.nan
     
     
-    def score_clean_ticker(ticker):
+    def clean_stock_name(name):
         """
-        統一股票代號
-        2330.TW -> 2330
-        8299.TWO -> 8299
+        清理股票名稱
         """
     
-        return (
-            str(ticker)
-            .strip()
-            .upper()
-            .replace(".TW", "")
-            .replace(".TWO", "")
+        if name is None:
+            return ""
+    
+        try:
+            if pd.isna(name):
+                return ""
+        except Exception:
+            pass
+    
+        return str(name).strip()
+    
+    
+    def get_base_ticker(ticker):
+        """
+        2330.TW → 2330
+        2330.TWO → 2330
+        """
+    
+        ticker = str(ticker).strip().upper()
+    
+        if ticker.endswith(".TW"):
+            return ticker[:-3]
+    
+        if ticker.endswith(".TWO"):
+            return ticker[:-4]
+    
+        return ticker
+    
+    
+    # ============================================================
+    # 3. 自動尋找 TAB 1 股票清單
+    # ============================================================
+    
+    def get_stock_pool():
+        """
+        自動尋找 TAB 1 的股票清單。
+    
+        優先順序：
+        1. session_state["my_stocks"]
+        2. 全域 my_stocks
+        3. session_state 常見股票清單
+        4. 全域常見股票清單
+        """
+    
+        candidates = [
+            "my_stocks",
+            "stock_list",
+            "stocks",
+            "watchlist",
+            "stock_watchlist",
+        ]
+    
+        pool = None
+    
+        # --------------------------------------------------------
+        # 先從 session_state 找
+        # --------------------------------------------------------
+    
+        for key in candidates:
+    
+            if key in st.session_state:
+    
+                value = st.session_state[key]
+    
+                if value is not None:
+    
+                    try:
+                        if len(value) > 0:
+                            pool = value
+                            break
+                    except Exception:
+                        pass
+    
+        # --------------------------------------------------------
+        # 再從 globals() 找
+        # --------------------------------------------------------
+    
+        if pool is None:
+    
+            for key in candidates:
+    
+                if key in globals():
+    
+                    value = globals()[key]
+    
+                    if value is not None:
+    
+                        try:
+                            if len(value) > 0:
+                                pool = value
+                                break
+                        except Exception:
+                            pass
+    
+        # --------------------------------------------------------
+        # 如果找不到
+        # --------------------------------------------------------
+    
+        if pool is None:
+            return []
+    
+        result = []
+    
+        # ========================================================
+        # 情況 1：dict
+        #
+        # 例如：
+        #
+        # {
+        #   "2330.TW": "台積電",
+        #   "2454.TW": "聯發科"
+        # }
+        # ========================================================
+    
+        if isinstance(pool, dict):
+    
+            for ticker, name in pool.items():
+    
+                ticker = str(ticker).strip()
+    
+                if ticker == "":
+                    continue
+    
+                result.append({
+                    "ticker": ticker,
+                    "name": clean_stock_name(name)
+                })
+    
+        # ========================================================
+        # 情況 2：DataFrame
+        # ========================================================
+    
+        elif isinstance(pool, pd.DataFrame):
+    
+            df_pool = pool.copy()
+    
+            ticker_col = None
+            name_col = None
+    
+            ticker_candidates = [
+                "代號",
+                "股票代號",
+                "證券代號",
+                "ticker",
+                "Ticker",
+                "code",
+                "Code",
+            ]
+    
+            name_candidates = [
+                "名稱",
+                "股票名稱",
+                "證券名稱",
+                "name",
+                "Name",
+            ]
+    
+            for col in ticker_candidates:
+    
+                if col in df_pool.columns:
+                    ticker_col = col
+                    break
+    
+            for col in name_candidates:
+    
+                if col in df_pool.columns:
+                    name_col = col
+                    break
+    
+            if ticker_col is not None:
+    
+                for _, row in df_pool.iterrows():
+    
+                    ticker = str(row[ticker_col]).strip()
+    
+                    if ticker == "" or ticker.lower() == "nan":
+                        continue
+    
+                    name = ""
+    
+                    if name_col is not None:
+                        name = clean_stock_name(row[name_col])
+    
+                    result.append({
+                        "ticker": ticker,
+                        "name": name
+                    })
+    
+        # ========================================================
+        # 情況 3：list / tuple / set
+        # ========================================================
+    
+        elif isinstance(pool, (list, tuple, set)):
+    
+            for item in pool:
+    
+                # ------------------------------------------------
+                # dict
+                # ------------------------------------------------
+    
+                if isinstance(item, dict):
+    
+                    ticker = (
+                        item.get("ticker")
+                        or item.get("Ticker")
+                        or item.get("代號")
+                        or item.get("股票代號")
+                        or item.get("code")
+                        or item.get("Code")
+                    )
+    
+                    name = (
+                        item.get("name")
+                        or item.get("Name")
+                        or item.get("名稱")
+                        or item.get("股票名稱")
+                    )
+    
+                    if ticker:
+    
+                        result.append({
+                            "ticker": str(ticker).strip(),
+                            "name": clean_stock_name(name)
+                        })
+    
+                # ------------------------------------------------
+                # tuple，例如：
+                # ("2330.TW", "台積電")
+                # ------------------------------------------------
+    
+                elif isinstance(item, (list, tuple)):
+    
+                    if len(item) >= 2:
+    
+                        result.append({
+                            "ticker": str(item[0]).strip(),
+                            "name": clean_stock_name(item[1])
+                        })
+    
+                    elif len(item) == 1:
+    
+                        result.append({
+                            "ticker": str(item[0]).strip(),
+                            "name": ""
+                        })
+    
+                # ------------------------------------------------
+                # 純字串
+                # ------------------------------------------------
+    
+                else:
+    
+                    ticker = str(item).strip()
+    
+                    if ticker:
+    
+                        result.append({
+                            "ticker": ticker,
+                            "name": ""
+                        })
+    
+        # ========================================================
+        # 去除重複
+        # ========================================================
+    
+        final_result = []
+    
+        seen = set()
+    
+        for item in result:
+    
+            ticker = item["ticker"]
+    
+            if ticker in seen:
+                continue
+    
+            seen.add(ticker)
+    
+            final_result.append(item)
+    
+        return final_result
+    
+    
+    # ============================================================
+    # 4. Yahoo Finance 股票資料
+    #
+    # 有 cache：
+    #   不重新呼叫 Yahoo
+    #
+    # 沒 cache：
+    #   才抓 Yahoo
+    # ============================================================
+    
+    @st.cache_data(
+        ttl=3600,
+        show_spinner=False
+    )
+    def get_score_stock_data(ticker):
+    
+        ticker = str(ticker).strip().upper()
+    
+        base = get_base_ticker(ticker)
+    
+        # --------------------------------------------------------
+        # TW → TWO
+        # --------------------------------------------------------
+    
+        candidates = []
+    
+        if ticker.endswith(".TW"):
+    
+            candidates = [
+                ticker,
+                base + ".TWO"
+            ]
+    
+        elif ticker.endswith(".TWO"):
+    
+            candidates = [
+                ticker,
+                base + ".TW"
+            ]
+    
+        else:
+    
+            candidates = [
+                base + ".TW",
+                base + ".TWO"
+            ]
+    
+        info = {}
+        hist = pd.DataFrame()
+        actual_ticker = None
+    
+        # --------------------------------------------------------
+        # Yahoo Finance
+        # --------------------------------------------------------
+    
+        for tk in candidates:
+    
+            try:
+    
+                yf_obj = yf.Ticker(tk)
+    
+                # ------------------------------------------------
+                # info
+                # ------------------------------------------------
+    
+                try:
+                    tmp_info = yf_obj.info
+    
+                    if isinstance(tmp_info, dict):
+                        info = tmp_info
+                except Exception:
+                    info = {}
+    
+                # ------------------------------------------------
+                # 歷史價格
+                # ------------------------------------------------
+    
+                try:
+    
+                    tmp_hist = yf_obj.history(
+                        period="1y",
+                        auto_adjust=False
+                    )
+    
+                    if (
+                        tmp_hist is not None
+                        and not tmp_hist.empty
+                        and "Close" in tmp_hist.columns
+                    ):
+    
+                        hist = tmp_hist.copy()
+                        actual_ticker = tk
+                        break
+    
+                except Exception:
+                    continue
+    
+            except Exception:
+                continue
+    
+        # --------------------------------------------------------
+        # 如果完全沒有價格資料
+        # --------------------------------------------------------
+    
+        if hist.empty:
+    
+            return {
+                "ticker": ticker,
+                "actual_ticker": actual_ticker,
+                "price": np.nan,
+    
+                "ma20": np.nan,
+                "ma60": np.nan,
+                "ma120": np.nan,
+                "trend20": np.nan,
+    
+                "roe": np.nan,
+                "roa": np.nan,
+                "operating_margin": np.nan,
+                "eps": np.nan,
+    
+                "revenue_growth": np.nan,
+                "eps_growth": np.nan,
+    
+                "pe": np.nan,
+                "pb": np.nan,
+                "peg": np.nan,
+    
+                "vol_3m": np.nan,
+                "vol_6m": np.nan,
+                "vol_1y": np.nan,
+    
+                "max_drawdown": np.nan,
+            }
+    
+        # ========================================================
+        # 價格
+        # ========================================================
+    
+        close = pd.to_numeric(
+            hist["Close"],
+            errors="coerce"
+        ).dropna()
+    
+        price = (
+            close.iloc[-1]
+            if len(close) > 0
+            else np.nan
         )
     
+        # ========================================================
+        # MA
+        # ========================================================
     
-    def score_percentile(series, higher_is_better=True):
-        """
-        百分位評分
+        ma20 = (
+            close.rolling(20).mean().iloc[-1]
+            if len(close) >= 20
+            else np.nan
+        )
     
+        ma60 = (
+            close.rolling(60).mean().iloc[-1]
+            if len(close) >= 60
+            else np.nan
+        )
+    
+        ma120 = (
+            close.rolling(120).mean().iloc[-1]
+            if len(close) >= 120
+            else np.nan
+        )
+    
+        # ========================================================
+        # 20 日趨勢
+        #
+        # 使用 20 日價格變化率
+        # ========================================================
+    
+        trend20 = np.nan
+    
+        if len(close) >= 21:
+    
+            old_price = safe_float(close.iloc[-21])
+            new_price = safe_float(close.iloc[-1])
+    
+            if (
+                not np.isnan(old_price)
+                and old_price != 0
+                and not np.isnan(new_price)
+            ):
+    
+                trend20 = (
+                    new_price / old_price
+                ) - 1
+    
+        # ========================================================
+        # 基本面
+        # ========================================================
+    
+        roe = safe_float(
+            info.get("returnOnEquity")
+        )
+    
+        roa = safe_float(
+            info.get("returnOnAssets")
+        )
+    
+        operating_margin = safe_float(
+            info.get("operatingMargins")
+        )
+    
+        eps = safe_float(
+            info.get("trailingEps")
+        )
+    
+        # ========================================================
+        # Yahoo 營收成長
+        #
+        # TAB 4 有資料時會覆蓋
+        # ========================================================
+    
+        revenue_growth = safe_float(
+            info.get("revenueGrowth")
+        )
+    
+        # ========================================================
+        # EPS 成長
+        # ========================================================
+    
+        eps_growth = safe_float(
+            info.get("earningsGrowth")
+        )
+    
+        # ========================================================
+        # 評價
+        # ========================================================
+    
+        pe = safe_float(
+            info.get("trailingPE")
+        )
+    
+        pb = safe_float(
+            info.get("priceToBook")
+        )
+    
+        peg = safe_float(
+            info.get("pegRatio")
+        )
+    
+        # ========================================================
+        # 報酬率
+        # ========================================================
+    
+        daily_return = close.pct_change().dropna()
+    
+        # ========================================================
+        # 3 個月波動
+        # ========================================================
+    
+        vol_3m = np.nan
+    
+        if len(daily_return) >= 30:
+    
+            r = daily_return.tail(63)
+    
+            if len(r) >= 30:
+                vol_3m = r.std() * np.sqrt(252)
+    
+        # ========================================================
+        # 6 個月波動
+        # ========================================================
+    
+        vol_6m = np.nan
+    
+        if len(daily_return) >= 60:
+    
+            r = daily_return.tail(126)
+    
+            if len(r) >= 60:
+                vol_6m = r.std() * np.sqrt(252)
+    
+        # ========================================================
+        # 1 年波動
+        # ========================================================
+    
+        vol_1y = np.nan
+    
+        if len(daily_return) >= 126:
+    
+            r = daily_return.tail(252)
+    
+            if len(r) >= 126:
+                vol_1y = r.std() * np.sqrt(252)
+    
+        # ========================================================
+        # 最大回撤
+        # ========================================================
+    
+        max_drawdown = np.nan
+    
+        if len(close) > 0:
+    
+            running_max = close.cummax()
+    
+            drawdown = (
+                close / running_max
+            ) - 1
+    
+            max_drawdown = drawdown.min()
+    
+        # ========================================================
+        # 回傳
+        # ========================================================
+    
+        return {
+    
+            "ticker": ticker,
+            "actual_ticker": actual_ticker,
+    
+            "price": price,
+    
+            "ma20": ma20,
+            "ma60": ma60,
+            "ma120": ma120,
+            "trend20": trend20,
+    
+            "roe": roe,
+            "roa": roa,
+            "operating_margin": operating_margin,
+            "eps": eps,
+    
+            "revenue_growth": revenue_growth,
+            "eps_growth": eps_growth,
+    
+            "pe": pe,
+            "pb": pb,
+            "peg": peg,
+    
+            "vol_3m": vol_3m,
+            "vol_6m": vol_6m,
+            "vol_1y": vol_1y,
+    
+            "max_drawdown": max_drawdown,
+        }
+    
+    
+    # ============================================================
+    # 5. TAB 4 營收資料
+    #
+    # 直接使用 TAB 4 已經抓好的資料
+    # 不重新呼叫 API
+    # ============================================================
+    
+    def get_revenue_data_from_tab4():
+    
+        possible_keys = [
+            "revenue_data",
+            "tab4_revenue_data",
+        ]
+    
+        for key in possible_keys:
+    
+            if key in st.session_state:
+    
+                data = st.session_state[key]
+    
+                if data is not None:
+    
+                    if isinstance(data, pd.DataFrame):
+                        return data.copy()
+    
+                    try:
+                        return pd.DataFrame(data)
+                    except Exception:
+                        pass
+    
+        return pd.DataFrame()
+    
+    
+    # ============================================================
+    # 6. 合併 TAB 4 營收資料
+    # ============================================================
+    
+    def merge_tab4_revenue(df):
+    
+        revenue_df = get_revenue_data_from_tab4()
+    
+        if revenue_df.empty:
+            return df
+    
+        revenue_df = revenue_df.copy()
+    
+        # --------------------------------------------------------
+        # 股票代號欄位
+        # --------------------------------------------------------
+    
+        code_col = None
+    
+        for col in [
+            "代號",
+            "股票代號",
+            "證券代號",
+            "stock_id",
+            "code",
+            "Code",
+        ]:
+    
+            if col in revenue_df.columns:
+                code_col = col
+                break
+    
+        if code_col is None:
+            return df
+    
+        revenue_df["_base_code"] = (
+            revenue_df[code_col]
+            .astype(str)
+            .str.extract(r"(\d{4})")[0]
+        )
+    
+        # --------------------------------------------------------
+        # YoY 欄位
+        # --------------------------------------------------------
+    
+        yoy_col = None
+    
+        for col in [
+            "年增率(YoY%)",
+            "營收年增率",
+            "營收年增率(%)",
+            "YoY",
+            "yoy",
+        ]:
+    
+            if col in revenue_df.columns:
+                yoy_col = col
+                break
+    
+        # --------------------------------------------------------
+        # 三率三升
+        # --------------------------------------------------------
+    
+        triple_col = None
+
+        for col in [
+            "三率三升",
+            "三率三升🔥",
+            "三率三升標記",
+        ]:
+            if col in revenue_df.columns:
+                triple_col = col
+                break
+        
+        if triple_col is not None:
+        
+            def convert_triple(value):
+        
+                if pd.isna(value):
+                    return np.nan
+        
+                # 已經是數字
+                if isinstance(value, (int, float, np.integer, np.floating)):
+                    return float(value)
+        
+                text_value = str(value).strip()
+        
+                # TAB 4 常見「符合」表示
+                if text_value in [
+                    "是",
+                    "Y",
+                    "YES",
+                    "True",
+                    "TRUE",
+                    "1",
+                    "✓",
+                    "✔",
+                    "🔥",
+                    "三率三升",
+                ]:
+                    return 1.0
+        
+                # TAB 4 常見「不符合」表示
+                if text_value in [
+                    "否",
+                    "N",
+                    "NO",
+                    "False",
+                    "FALSE",
+                    "0",
+                    "✗",
+                    "✘",
+                    "",
+                ]:
+                    return 0.0
+        
+                return np.nan
+        
+            revenue_df["triple_rise"] = (
+                revenue_df[triple_col]
+                .apply(convert_triple)
+            )
+        
+        else:
+        
+            revenue_df["triple_rise"] = np.nan
+    
+        # --------------------------------------------------------
+        # 只保留必要欄位
+        # --------------------------------------------------------
+    
+        keep_cols = ["_base_code"]
+    
+        if yoy_col:
+            keep_cols.append(yoy_col)
+    
+        if triple_col:
+            keep_cols.append(triple_col)
+    
+        revenue_df = revenue_df[keep_cols].copy()
+    
+        # --------------------------------------------------------
+        # 數值轉換
+        # --------------------------------------------------------
+    
+        if yoy_col:
+    
+            revenue_df[yoy_col] = pd.to_numeric(
+                revenue_df[yoy_col],
+                errors="coerce"
+            )
+    
+            # TAB 4 假設：
+            # 25 = 25%
+            #
+            # 所以轉成：
+            # 0.25
+            revenue_df["_revenue_growth_tab4"] = (
+                revenue_df[yoy_col] / 100
+            )
+    
+        # --------------------------------------------------------
+        # 三率三升轉數字
+        # --------------------------------------------------------
+    
+        if triple_col:
+    
+            def convert_triple(value):
+    
+                if pd.isna(value):
+                    return np.nan
+    
+                text_value = str(value).strip()
+    
+                if text_value in [
+                    "是",
+                    "Y",
+                    "YES",
+                    "1",
+                    "True",
+                    "TRUE",
+                    "✓",
+                    "✔",
+                    "🔥",
+                ]:
+                    return 1.0
+    
+                if text_value in [
+                    "否",
+                    "N",
+                    "NO",
+                    "0",
+                    "False",
+                    "FALSE",
+                    "✗",
+                    "✘",
+                ]:
+                    return 0.0
+    
+                try:
+                    return float(value)
+                except Exception:
+                    return np.nan
+    
+            revenue_df["_triple_rise"] = (
+                revenue_df[triple_col]
+                .apply(convert_triple)
+            )
+    
+        # --------------------------------------------------------
+        # 去重
+        # --------------------------------------------------------
+    
+        revenue_df = (
+            revenue_df
+            .drop_duplicates(
+                subset=["_base_code"],
+                keep="last"
+            )
+        )
+    
+        # --------------------------------------------------------
+        # 股票資料建立 base code
+        # --------------------------------------------------------
+    
+        df["_base_code"] = (
+            df["ticker"]
+            .astype(str)
+            .apply(get_base_ticker)
+            .str.extract(r"(\d{4})")[0]
+        )
+    
+        # --------------------------------------------------------
+        # 合併
+        # --------------------------------------------------------
+    
+        df = df.merge(
+            revenue_df,
+            on="_base_code",
+            how="left"
+        )
+    
+        # --------------------------------------------------------
+        # TAB 4 優先
+        # --------------------------------------------------------
+    
+        if "_revenue_growth_tab4" in df.columns:
+    
+            mask = df["_revenue_growth_tab4"].notna()
+    
+            df.loc[
+                mask,
+                "revenue_growth"
+            ] = df.loc[
+                mask,
+                "_revenue_growth_tab4"
+            ]
+    
+        # --------------------------------------------------------
+        # 三率三升
+        # --------------------------------------------------------
+    
+        if "_triple_rise" in df.columns:
+    
+            df["triple_rise"] = df[
+                "_triple_rise"
+            ]
+    
+        else:
+    
+            df["triple_rise"] = np.nan
+    
+        return df
+    
+    
+    # ============================================================
+    # 7. TAB 9 三大法人資料
+    #
+    # 直接讀 session_state
+    # 不重新呼叫 API
+    # ============================================================
+    
+    def get_institutional_data():
+    
+        possible_keys = [
+            "institutional_data",
+            "tab9_institutional_data",
+        ]
+    
+        for key in possible_keys:
+    
+            if key in st.session_state:
+    
+                data = st.session_state[key]
+    
+                if data is not None:
+    
+                    if isinstance(data, pd.DataFrame):
+                        return data.copy()
+    
+                    try:
+                        return pd.DataFrame(data)
+                    except Exception:
+                        pass
+    
+        return pd.DataFrame()
+    
+    
+    # ============================================================
+    # 8. 合併三大法人
+    # ============================================================
+    
+    def merge_institutional_data(df):
+    
+        inst_df = get_institutional_data()
+    
+        # --------------------------------------------------------
+        # 預設欄位
+        # --------------------------------------------------------
+    
+        for col in [
+            "foreign",
+            "trust",
+            "dealer",
+            "institutional_total",
+        ]:
+    
+            if col not in df.columns:
+                df[col] = np.nan
+    
+        if inst_df.empty:
+            return df
+    
+        inst_df = inst_df.copy()
+    
+        # --------------------------------------------------------
+        # 股票代號
+        # --------------------------------------------------------
+    
+        code_col = None
+    
+        for col in [
+            "代號",
+            "股票代號",
+            "證券代號",
+            "stock_id",
+            "code",
+            "Code",
+        ]:
+    
+            if col in inst_df.columns:
+                code_col = col
+                break
+    
+        if code_col is None:
+            return df
+    
+        inst_df["_base_code"] = (
+            inst_df[code_col]
+            .astype(str)
+            .str.extract(r"(\d{4})")[0]
+        )
+    
+        # --------------------------------------------------------
+        # 欄位自動辨識
+        # --------------------------------------------------------
+    
+        def find_col(candidates):
+    
+            for col in candidates:
+    
+                if col in inst_df.columns:
+                    return col
+    
+            return None
+    
+        foreign_col = find_col([
+            "外資",
+            "外資買賣超",
+            "外資買賣超(張)",
+            "外資及陸資",
+            "Foreign",
+            "foreign",
+        ])
+    
+        trust_col = find_col([
+            "投信",
+            "投信買賣超",
+            "投信買賣超(張)",
+            "Investment Trust",
+            "trust",
+        ])
+    
+        dealer_col = find_col([
+            "自營商",
+            "自營商買賣超",
+            "自營商買賣超(張)",
+            "Dealer",
+            "dealer",
+        ])
+    
+        total_col = find_col([
+            "三大法人",
+            "三大法人合計",
+            "合計",
+            "總買賣超",
+            "institutional_total",
+        ])
+    
+        # --------------------------------------------------------
+        # 建立中間資料
+        # --------------------------------------------------------
+    
+        merge_df = inst_df[
+            ["_base_code"]
+        ].copy()
+    
+        if foreign_col:
+            merge_df["foreign_new"] = pd.to_numeric(
+                inst_df[foreign_col],
+                errors="coerce"
+            )
+    
+        if trust_col:
+            merge_df["trust_new"] = pd.to_numeric(
+                inst_df[trust_col],
+                errors="coerce"
+            )
+    
+        if dealer_col:
+            merge_df["dealer_new"] = pd.to_numeric(
+                inst_df[dealer_col],
+                errors="coerce"
+            )
+    
+        if total_col:
+            merge_df["institutional_total_new"] = pd.to_numeric(
+                inst_df[total_col],
+                errors="coerce"
+            )
+    
+        # --------------------------------------------------------
+        # 如果沒有總合計，自行計算
+        # --------------------------------------------------------
+    
+        if (
+            "institutional_total_new" not in merge_df.columns
+        ):
+    
+            cols = [
+                c
+                for c in [
+                    "foreign_new",
+                    "trust_new",
+                    "dealer_new",
+                ]
+                if c in merge_df.columns
+            ]
+    
+            if cols:
+    
+                merge_df[
+                    "institutional_total_new"
+                ] = merge_df[cols].sum(
+                    axis=1,
+                    min_count=1
+                )
+    
+        # --------------------------------------------------------
+        # 去重
+        # --------------------------------------------------------
+    
+        merge_df = (
+            merge_df
+            .drop_duplicates(
+                subset=["_base_code"],
+                keep="last"
+            )
+        )
+    
+        # --------------------------------------------------------
+        # 合併
+        # --------------------------------------------------------
+    
+        df = df.merge(
+            merge_df,
+            on="_base_code",
+            how="left"
+        )
+    
+        # --------------------------------------------------------
+        # 寫回
+        # --------------------------------------------------------
+    
+        for source, target in [
+            ("foreign_new", "foreign"),
+            ("trust_new", "trust"),
+            ("dealer_new", "dealer"),
+            (
+                "institutional_total_new",
+                "institutional_total"
+            ),
+        ]:
+    
+            if source in df.columns:
+    
+                mask = df[source].notna()
+    
+                df.loc[
+                    mask,
+                    target
+                ] = df.loc[
+                    mask,
+                    source
+                ]
+    
+        return df
+    
+    
+    # ============================================================
+    # 9. 百分位評分
+    # ============================================================
+    
+    def percentile_score(
+        series,
         higher_is_better=True
-            數值越高分數越高
+    ):
+        """
+        將同一批股票轉成 0~1 分數。
     
-        higher_is_better=False
-            數值越低分數越高
+        越高越好：
+            最高 → 1
     
-        回傳：
-            0 ~ 1
+        越低越好：
+            最低 → 1
+    
+        缺資料：
+            NaN
+    
+        注意：
+        不會把缺資料直接當 0。
         """
     
         s = pd.to_numeric(
@@ -2655,17 +3818,24 @@ with tab10:
     
         valid = s.notna()
     
-        n = int(valid.sum())
+        n = valid.sum()
     
         if n == 0:
             return result
     
-        # 只有一檔股票
+        # --------------------------------------------------------
+        # 只有一家公司
+        # --------------------------------------------------------
+    
         if n == 1:
     
             result.loc[valid] = 1.0
     
             return result
+    
+        # --------------------------------------------------------
+        # 排名
+        # --------------------------------------------------------
     
         result.loc[valid] = (
             s.loc[valid]
@@ -2679,2437 +3849,1374 @@ with tab10:
         return result
     
     
+    # ============================================================
+    # 10. 因子加權
+    # ============================================================
+    
     def calculate_factor_score(
         df,
-        component_columns,
-        factor_weights
+        factor_name,
+        components
     ):
         """
-        單一大因子計算
-    
-        重要：
-        如果某個子因子沒有資料，
-        不直接算 0，而是把剩餘權重重新分配。
+        將一個大因子計算成指定滿分。
     
         例如：
+    
+        獲利能力 25 分
     
         ROE 8
         ROA 5
         營業利益率 6
         EPS 6
     
-        如果 ROA 沒資料：
+        如果 EPS 沒資料：
     
-        可用權重 = 8 + 6 + 6 = 20
+        不會扣掉 EPS 6 分。
     
-        剩餘 20 分正常比例分配。
+        剩餘有資料的因子會重新按比例計算。
         """
     
-        score = pd.Series(
-            0.0,
-            index=df.index
-        )
+        total_weight = components["total"]
     
-        available_weight = pd.Series(
-            0.0,
-            index=df.index
-        )
+        score_columns = []
     
-        for column, weight in factor_weights.items():
+        weighted_columns = []
     
-            if column not in df.columns:
+        available_weights = []
+    
+        for key, weight in components.items():
+    
+            if key == "total":
                 continue
     
-            values = pd.to_numeric(
-                df[column],
-                errors="coerce"
+            score_col = f"_score_{factor_name}_{key}"
+    
+            score_columns.append(score_col)
+    
+            # ----------------------------------------------------
+            # 評價、風險部分需要反向
+            # ----------------------------------------------------
+    
+            higher_is_better = True
+    
+            if factor_name == "評價":
+                higher_is_better = False
+    
+            if factor_name == "低波風險":
+                higher_is_better = False
+    
+            # ----------------------------------------------------
+            # 技術與籌碼、獲利、成長
+            # ----------------------------------------------------
+    
+            df[score_col] = percentile_score(
+                df[key],
+                higher_is_better=higher_is_better
             )
     
-            valid = values.notna()
-    
-            if not valid.any():
-                continue
-    
-            available_weight.loc[valid] += weight
-    
-        for column, weight in factor_weights.items():
-    
-            if column not in df.columns:
-                continue
-    
-            score_column = f"__score_{column}"
-    
-            if score_column not in df.columns:
-                continue
-    
-            component_score = pd.to_numeric(
-                df[score_column],
-                errors="coerce"
+            weighted_col = (
+                f"_weighted_{factor_name}_{key}"
             )
     
-            valid = (
-                component_score.notna()
-                & (available_weight > 0)
+            df[weighted_col] = (
+                df[score_col] * weight
             )
     
-            if valid.any():
+            weighted_columns.append(weighted_col)
     
-                score.loc[valid] += (
-                    component_score.loc[valid]
-                    * weight
-                )
+            available_weights.append(
+                df[score_col].notna().astype(float) * weight
+            )
     
         # --------------------------------------------------------
-        # 重新正規化到該因子的滿分
+        # 計算實際可用權重
         # --------------------------------------------------------
     
-        factor_max = sum(
-            factor_weights.values()
+        available_weight_df = pd.concat(
+            available_weights,
+            axis=1
         )
     
-        valid_weight = available_weight > 0
-    
-        score.loc[valid_weight] = (
-            score.loc[valid_weight]
-            / available_weight.loc[valid_weight]
-            * factor_max
+        available_weight = (
+            available_weight_df.sum(axis=1)
         )
     
-        score.loc[~valid_weight] = np.nan
+        # --------------------------------------------------------
+        # 加權分數
+        # --------------------------------------------------------
     
-        return score
-    
-    
-    # ============================================================
-    # 3. 取得 TAB 4 營收資料
-    #
-    # 完全使用 TAB 4 已經產生的 revenue_data
-    #
-    # TAB 4：
-    # rate.csv
-    #     ↓
-    # 三率三升
-    #     ↓
-    # st.session_state["revenue_data"]
-    #     ↓
-    # TAB 10
-    # ============================================================
-    
-    def get_revenue_data_from_tab4():
-    
-        possible_keys = [
-            "revenue_data",
-            "tab4_revenue_data",
+        weighted_df = df[
+            weighted_columns
         ]
     
-        for key in possible_keys:
+        weighted_sum = weighted_df.sum(
+            axis=1,
+            min_count=1
+        )
     
-            if key not in st.session_state:
-                continue
+        # --------------------------------------------------------
+        # 缺資料時重新正規化
+        # --------------------------------------------------------
     
-            data = st.session_state[key]
+        df[f"{factor_name}得分"] = np.where(
     
-            if data is None:
-                continue
+            available_weight > 0,
     
-            if isinstance(data, pd.DataFrame):
+            weighted_sum
+            / available_weight
+            * total_weight,
     
-                if not data.empty:
-                    return data.copy()
+            np.nan
+        )
     
-            else:
+        # --------------------------------------------------------
+        # 完整度
+        # --------------------------------------------------------
     
-                try:
+        df[
+            f"{factor_name}完整度"
+        ] = np.where(
     
-                    df_revenue = pd.DataFrame(data)
+            total_weight > 0,
     
-                    if not df_revenue.empty:
-                        return df_revenue.copy()
+            available_weight / total_weight,
     
-                except Exception:
+            np.nan
+        )
     
-                    pass
-    
-        return pd.DataFrame()
+        return df
     
     
     # ============================================================
-    # 4. 取得 TAB 9 三大法人資料
-    #
-    # 不重新呼叫 TWSE / TPEX
+    # 11. 主程式
     # ============================================================
     
-    def get_institutional_data_from_tab9():
-    
-        possible_keys = [
-            "institutional_data",
-            "tab9_institutional_data",
-        ]
-    
-        for key in possible_keys:
-    
-            if key not in st.session_state:
-                continue
-    
-            data = st.session_state[key]
-    
-            if data is None:
-                continue
-    
-            if isinstance(data, pd.DataFrame):
-    
-                if not data.empty:
-                    return data.copy()
-    
-            else:
-    
-                try:
-    
-                    df_insti = pd.DataFrame(data)
-    
-                    if not df_insti.empty:
-                        return df_insti.copy()
-    
-                except Exception:
-    
-                    pass
-    
-        return pd.DataFrame()
+    stock_pool = get_stock_pool()
     
     
     # ============================================================
-    # 5. 股票清單
-    #
-    # 優先使用 TAB 1 的 st.session_state.my_stocks
-    #
-    # 支援：
-    #
-    # {
-    #     "2330.TW": "台積電",
-    #     "2454.TW": "聯發科"
-    # }
+    # 如果找不到股票
     # ============================================================
     
-    def get_score_stock_list():
+    if not stock_pool:
     
-        # --------------------------------------------------------
-        # 第一優先：session_state.my_stocks
-        # --------------------------------------------------------
+        st.warning(
+            "TAB 10 尚未取得監控股票清單。"
+        )
     
-        if "my_stocks" in st.session_state:
+        st.info(
+            "請確認 TAB 1 建立股票清單後，"
+            "有將 my_stocks 存入 st.session_state。"
+        )
     
-            stocks = st.session_state["my_stocks"]
+        st.code(
+            'st.session_state["my_stocks"] = my_stocks.copy()',
+            language="python"
+        )
     
-            if stocks is not None:
-    
-                if isinstance(stocks, dict):
-    
-                    return stocks.copy()
-    
-                if isinstance(stocks, list):
-    
-                    result = {}
-    
-                    for ticker in stocks:
-    
-                        result[str(ticker)] = str(ticker)
-    
-                    return result
-    
-        # --------------------------------------------------------
-        # 第二優先：全域 my_stocks
-        # --------------------------------------------------------
-    
-        if "my_stocks" in globals():
-    
-            stocks = globals()["my_stocks"]
-    
-            if isinstance(stocks, dict):
-                return stocks.copy()
-    
-            if isinstance(stocks, list):
-    
-                result = {}
-    
-                for ticker in stocks:
-    
-                    result[str(ticker)] = str(ticker)
-    
-                return result
-    
-        # --------------------------------------------------------
-        # 其他可能名稱
-        # --------------------------------------------------------
-    
-        possible_names = [
-            "stock_list",
-            "stocks",
-            "watchlist",
-            "stock_watchlist",
-        ]
-    
-        for name in possible_names:
-    
-            if name in st.session_state:
-    
-                stocks = st.session_state[name]
-    
-                if isinstance(stocks, dict):
-                    return stocks.copy()
-    
-                if isinstance(stocks, list):
-    
-                    result = {}
-    
-                    for ticker in stocks:
-    
-                        result[str(ticker)] = str(ticker)
-    
-                    return result
-    
-        return {}
+        st.stop()
     
     
     # ============================================================
-    # 6. Yahoo Finance
-    #
-    # 這裡才是 TAB 10 自己需要的 API
-    #
-    # 使用 cache：
-    # 1 小時內相同 ticker 不重新呼叫
+    # TAB 1 股票清單顯示
     # ============================================================
     
-    @st.cache_data(
-        ttl=3600,
-        show_spinner=False
+    st.subheader("📊 台股 100 分多因子評分")
+    
+    
+    st.caption(
+        f"目前監控股票：{len(stock_pool)} 檔｜"
+        "Yahoo Finance 快取 1 小時｜"
+        "TAB 4 / TAB 9 直接使用既有資料"
     )
-    def get_score_stock_data(ticker):
     
-        candidates = []
     
-        ticker = str(ticker).strip().upper()
+    # ============================================================
+    # 強制更新
+    # ============================================================
     
-        # --------------------------------------------------------
-        # 依序嘗試 TW / TWO
-        # --------------------------------------------------------
+    col_refresh1, col_refresh2 = st.columns([1, 5])
     
-        if ticker.endswith(".TW") or ticker.endswith(".TWO"):
+    with col_refresh1:
     
-            candidates.append(ticker)
-    
-            base = score_clean_ticker(ticker)
-    
-            if ticker.endswith(".TW"):
-                candidates.append(base + ".TWO")
-    
-            else:
-                candidates.append(base + ".TW")
-    
-        else:
-    
-            candidates.append(ticker + ".TW")
-            candidates.append(ticker + ".TWO")
-    
-        # 去除重複
-        candidates = list(
-            dict.fromkeys(candidates)
+        force_refresh = st.button(
+            "🔄 強制更新",
+            key="tab10_force_refresh"
         )
     
-        for actual_ticker in candidates:
+    if force_refresh:
+    
+        get_score_stock_data.clear()
+    
+        st.cache_data.clear()
+    
+        st.rerun()
+    
+    
+    # ============================================================
+    # 取得股票資料
+    # ============================================================
+    
+    data_list = []
+    
+    progress = st.progress(0)
+    
+    status = st.empty()
+    
+    total_stocks = len(stock_pool)
+    
+    for i, item in enumerate(stock_pool):
+    
+        ticker = item["ticker"]
+        name = item["name"]
+    
+        status.text(
+            f"正在處理 {ticker} {name} "
+            f"({i + 1}/{total_stocks})"
+        )
+    
+        data = get_score_stock_data(ticker)
+    
+        data["ticker"] = ticker
+    
+        if not name:
+    
+            # 如果 TAB 1 沒有名稱
+            # 嘗試從 Yahoo 找名稱
     
             try:
     
-                yf_ticker = yf.Ticker(
-                    actual_ticker
+                actual_ticker = data.get(
+                    "actual_ticker"
                 )
     
-                # ------------------------------------------------
-                # Yahoo 基本資料
-                # ------------------------------------------------
+                if actual_ticker:
     
-                try:
-    
-                    info = yf_ticker.info
-    
-                except Exception:
-    
-                    info = {}
-    
-                if not isinstance(info, dict):
-                    info = {}
-    
-                # ------------------------------------------------
-                # 歷史價格
-                # ------------------------------------------------
-    
-                try:
-    
-                    hist = yf_ticker.history(
-                        period="1y",
-                        auto_adjust=False
+                    info_obj = yf.Ticker(
+                        actual_ticker
                     )
     
-                except Exception:
+                    info = info_obj.info
     
-                    hist = pd.DataFrame()
-    
-                if hist is None or hist.empty:
-    
-                    continue
-    
-                if "Close" not in hist.columns:
-    
-                    continue
-    
-                close = pd.to_numeric(
-                    hist["Close"],
-                    errors="coerce"
-                ).dropna()
-    
-                if len(close) < 20:
-    
-                    continue
-    
-                # ------------------------------------------------
-                # 名稱
-                # ------------------------------------------------
-    
-                yahoo_name = (
-                    info.get("shortName")
-                    or info.get("longName")
-                    or ""
-                )
-    
-                # ------------------------------------------------
-                # 技術指標
-                # ------------------------------------------------
-    
-                price = score_safe_float(
-                    close.iloc[-1]
-                )
-    
-                ma20 = (
-                    close
-                    .rolling(20)
-                    .mean()
-                    .iloc[-1]
-                )
-    
-                ma60 = (
-                    close
-                    .rolling(60)
-                    .mean()
-                    .iloc[-1]
-                )
-    
-                ma120 = (
-                    close
-                    .rolling(120)
-                    .mean()
-                    .iloc[-1]
-                )
-    
-                # ------------------------------------------------
-                # 20 日趨勢
-                #
-                # 目前價格相對 20 個交易日前的變化
-                # ------------------------------------------------
-    
-                if len(close) >= 21:
-    
-                    trend20 = (
-                        close.iloc[-1]
-                        / close.iloc[-21]
-                        - 1
+                    name = (
+                        info.get("shortName")
+                        or info.get("longName")
+                        or ""
                     )
-    
-                else:
-    
-                    trend20 = np.nan
-    
-                # ------------------------------------------------
-                # 波動率
-                #
-                # 使用 Close
-                # 年化 = 日報酬標準差 × sqrt(252)
-                # ------------------------------------------------
-    
-                daily_return = close.pct_change().dropna()
-    
-                vol_3m = np.nan
-                vol_6m = np.nan
-                vol_1y = np.nan
-    
-                if len(daily_return) >= 30:
-    
-                    vol_3m = (
-                        daily_return
-                        .tail(63)
-                        .std()
-                        * np.sqrt(252)
-                    )
-    
-                if len(daily_return) >= 60:
-    
-                    vol_6m = (
-                        daily_return
-                        .tail(126)
-                        .std()
-                        * np.sqrt(252)
-                    )
-    
-                if len(daily_return) >= 126:
-    
-                    vol_1y = (
-                        daily_return
-                        .tail(252)
-                        .std()
-                        * np.sqrt(252)
-                    )
-    
-                # ------------------------------------------------
-                # 最大回撤
-                # ------------------------------------------------
-    
-                if len(close) > 0:
-    
-                    rolling_max = close.cummax()
-    
-                    drawdown = (
-                        close / rolling_max - 1
-                    )
-    
-                    max_drawdown = drawdown.min()
-    
-                else:
-    
-                    max_drawdown = np.nan
-    
-                # ------------------------------------------------
-                # Yahoo 財務資料
-                # ------------------------------------------------
-    
-                roe = score_safe_float(
-                    info.get("returnOnEquity")
-                )
-    
-                roa = score_safe_float(
-                    info.get("returnOnAssets")
-                )
-    
-                operating_margin = score_safe_float(
-                    info.get("operatingMargins")
-                )
-    
-                eps = score_safe_float(
-                    info.get("trailingEps")
-                )
-    
-                revenue_growth = score_safe_float(
-                    info.get("revenueGrowth")
-                )
-    
-                eps_growth = score_safe_float(
-                    info.get("earningsGrowth")
-                )
-    
-                pe = score_safe_float(
-                    info.get("trailingPE")
-                )
-    
-                pb = score_safe_float(
-                    info.get("priceToBook")
-                )
-    
-                # ------------------------------------------------
-                # PEG
-                # ------------------------------------------------
-    
-                peg = score_safe_float(
-                    info.get("pegRatio")
-                )
-    
-                # 如果 Yahoo 沒有 PEG
-                # 用 PE / earnings growth 嘗試計算
-                if (
-                    pd.isna(peg)
-                    and pd.notna(pe)
-                    and pd.notna(eps_growth)
-                    and eps_growth > 0
-                ):
-    
-                    growth_percent = (
-                        eps_growth * 100
-                    )
-    
-                    if growth_percent > 0:
-    
-                        peg = (
-                            pe
-                            / growth_percent
-                        )
-    
-                # ------------------------------------------------
-                # 回傳
-                # ------------------------------------------------
-    
-                return {
-    
-                    "ticker": actual_ticker,
-    
-                    "yahoo_name": yahoo_name,
-    
-                    "price": price,
-    
-                    "ma20": score_safe_float(ma20),
-                    "ma60": score_safe_float(ma60),
-                    "ma120": score_safe_float(ma120),
-    
-                    "trend20": score_safe_float(trend20),
-    
-                    "roe": roe,
-                    "roa": roa,
-                    "operating_margin": operating_margin,
-                    "eps": eps,
-    
-                    "revenue_growth_yahoo": revenue_growth,
-                    "eps_growth": eps_growth,
-    
-                    "pe": pe,
-                    "pb": pb,
-                    "peg": peg,
-    
-                    "vol_3m": score_safe_float(vol_3m),
-                    "vol_6m": score_safe_float(vol_6m),
-                    "vol_1y": score_safe_float(vol_1y),
-    
-                    "max_drawdown": score_safe_float(
-                        max_drawdown
-                    ),
-    
-                    "data_ok": True,
-                }
     
             except Exception:
+                pass
     
-                continue
+        data["name"] = name
     
-        return {
+        data_list.append(data)
     
-            "ticker": ticker,
-            "yahoo_name": "",
-            "price": np.nan,
+        progress.progress(
+            int(
+                (i + 1)
+                / total_stocks
+                * 100
+            )
+        )
     
-            "ma20": np.nan,
-            "ma60": np.nan,
-            "ma120": np.nan,
     
-            "trend20": np.nan,
-    
-            "roe": np.nan,
-            "roa": np.nan,
-            "operating_margin": np.nan,
-            "eps": np.nan,
-    
-            "revenue_growth_yahoo": np.nan,
-            "eps_growth": np.nan,
-    
-            "pe": np.nan,
-            "pb": np.nan,
-            "peg": np.nan,
-    
-            "vol_3m": np.nan,
-            "vol_6m": np.nan,
-            "vol_1y": np.nan,
-    
-            "max_drawdown": np.nan,
-    
-            "data_ok": False,
-        }
+    status.empty()
+    progress.empty()
     
     
     # ============================================================
-    # 7. TAB 4 資料合併
+    # DataFrame
     # ============================================================
     
-    def merge_tab4_data(df):
-    
-        revenue_df = get_revenue_data_from_tab4()
-    
-        # --------------------------------------------------------
-        # 沒有 TAB 4
-        # --------------------------------------------------------
-    
-        if revenue_df.empty:
-    
-            df["revenue_growth"] = np.nan
-            df["三率三升"] = "-"
-    
-            return df
-    
-        # --------------------------------------------------------
-        # 找代號欄位
-        # --------------------------------------------------------
-    
-        code_candidates = [
-            "代號",
-            "股票代號",
-            "證券代號",
-            "公司代號",
-            "stock_id",
-            "code",
-            "Code",
-        ]
-    
-        revenue_code_col = None
-    
-        for col in code_candidates:
-    
-            if col in revenue_df.columns:
-    
-                revenue_code_col = col
-                break
-    
-        if revenue_code_col is None:
-    
-            df["revenue_growth"] = np.nan
-            df["三率三升"] = "-"
-    
-            return df
-    
-        # --------------------------------------------------------
-        # 三率三升欄位
-        # --------------------------------------------------------
-    
-        triple_candidates = [
-            "三率三升",
-            "三率三升🔥",
-            "三率三升標記",
-        ]
-    
-        triple_col = None
-    
-        for col in triple_candidates:
-    
-            if col in revenue_df.columns:
-    
-                triple_col = col
-                break
-    
-        # --------------------------------------------------------
-        # 年增率
-        # --------------------------------------------------------
-    
-        yoy_candidates = [
-            "年增率(YoY%)",
-            "營收年增率",
-            "營收年增率(%)",
-            "YoY",
-            "yoy",
-        ]
-    
-        yoy_col = None
-    
-        for col in yoy_candidates:
-    
-            if col in revenue_df.columns:
-    
-                yoy_col = col
-                break
-    
-        # --------------------------------------------------------
-        # 建立合併資料
-        # --------------------------------------------------------
-    
-        revenue_merge = pd.DataFrame()
-    
-        revenue_merge["_merge_code"] = (
-            revenue_df[revenue_code_col]
-            .astype(str)
-            .str.strip()
-            .str.replace(
-                r"\.(TW|TWO)$",
-                "",
-                regex=True
-            )
-        )
-    
-        # --------------------------------------------------------
-        # 年增率
-        #
-        # TAB 4 是百分比數字
-        #
-        # 例如：
-        # 25 = 25%
-        #
-        # TAB 10 統一轉成：
-        # 0.25
-        # --------------------------------------------------------
-    
-        if yoy_col is not None:
-    
-            revenue_merge["_tab4_yoy"] = pd.to_numeric(
-                revenue_df[yoy_col],
-                errors="coerce"
-            ) / 100
-    
-        else:
-    
-            revenue_merge["_tab4_yoy"] = np.nan
-    
-        # --------------------------------------------------------
-        # 三率三升
-        # --------------------------------------------------------
-    
-        if triple_col is not None:
-    
-            revenue_merge["_triple_rise"] = (
-                revenue_df[triple_col]
-                .astype(str)
-                .str.strip()
-            )
-    
-        else:
-    
-            revenue_merge["_triple_rise"] = "-"
-    
-        # --------------------------------------------------------
-        # 去除重複股票
-        # --------------------------------------------------------
-    
-        revenue_merge = (
-            revenue_merge
-            .drop_duplicates(
-                subset="_merge_code",
-                keep="first"
-            )
-        )
-    
-        # --------------------------------------------------------
-        # TAB 10 股票代號
-        # --------------------------------------------------------
-    
-        df["_merge_code"] = (
-            df["ticker"]
-            .astype(str)
-            .str.strip()
-            .str.replace(
-                r"\.(TW|TWO)$",
-                "",
-                regex=True
-            )
-        )
-    
-        # --------------------------------------------------------
-        # 合併
-        # --------------------------------------------------------
-    
-        df = pd.merge(
-            df,
-            revenue_merge[
-                [
-                    "_merge_code",
-                    "_tab4_yoy",
-                    "_triple_rise",
-                ]
-            ],
-            on="_merge_code",
-            how="left"
-        )
-    
-        df = df.drop(
-            columns=["_merge_code"]
-        )
-    
-        # --------------------------------------------------------
-        # TAB 4 年增率優先
-        # --------------------------------------------------------
-    
-        df["revenue_growth"] = (
-            df["_tab4_yoy"]
-            .where(
-                df["_tab4_yoy"].notna(),
-                df["revenue_growth_yahoo"]
-            )
-        )
-    
-        # --------------------------------------------------------
-        # 三率三升
-        #
-        # TAB 4 已經把 rate.csv：
-        #
-        # 1 / 1.0 / True / true
-        #
-        # 轉成：
-        #
-        # 🔥 三率三升
-        #
-        # 所以這裡直接使用
-        # --------------------------------------------------------
-    
-        df["三率三升"] = (
-            df["_triple_rise"]
-            .fillna("-")
-            .astype(str)
-            .str.strip()
-        )
-    
-        df = df.drop(
-            columns=[
-                "_tab4_yoy",
-                "_triple_rise",
-            ]
-        )
-    
-        return df
+    df = pd.DataFrame(data_list)
     
     
     # ============================================================
-    # 8. TAB 9 三大法人資料合併
+    # 合併 TAB 4
     # ============================================================
     
-    def merge_tab9_data(df):
-    
-        insti_df = get_institutional_data_from_tab9()
-    
-        # --------------------------------------------------------
-        # 沒有 TAB 9
-        # --------------------------------------------------------
-    
-        if insti_df.empty:
-    
-            df["foreign"] = np.nan
-            df["trust"] = np.nan
-            df["dealer"] = np.nan
-            df["institutional_total"] = np.nan
-    
-            return df
-    
-        # --------------------------------------------------------
-        # 代號
-        # --------------------------------------------------------
-    
-        code_candidates = [
-            "代號",
-            "股票代號",
-            "證券代號",
-            "公司代號",
-        ]
-    
-        insti_code_col = None
-    
-        for col in code_candidates:
-    
-            if col in insti_df.columns:
-    
-                insti_code_col = col
-                break
-    
-        if insti_code_col is None:
-    
-            df["foreign"] = np.nan
-            df["trust"] = np.nan
-            df["dealer"] = np.nan
-            df["institutional_total"] = np.nan
-    
-            return df
-    
-        # --------------------------------------------------------
-        # 欄位名稱
-        # --------------------------------------------------------
-    
-        foreign_candidates = [
-            "外資買賣超(張)",
-            "外資及陸資買賣超(張)",
-            "外資",
-            "外資買賣超",
-        ]
-    
-        trust_candidates = [
-            "投信買賣超(張)",
-            "投信",
-            "投信買賣超",
-        ]
-    
-        dealer_candidates = [
-            "自營商買賣超(張)",
-            "自營商",
-            "自營商買賣超",
-        ]
-    
-        total_candidates = [
-            "三大法人合計(張)",
-            "三大法人",
-            "三大法人買賣超(張)",
-            "合計",
-        ]
-    
-        def find_column(candidates):
-    
-            for col in candidates:
-    
-                if col in insti_df.columns:
-                    return col
-    
-            return None
-    
-        foreign_col = find_column(
-            foreign_candidates
-        )
-    
-        trust_col = find_column(
-            trust_candidates
-        )
-    
-        dealer_col = find_column(
-            dealer_candidates
-        )
-    
-        total_col = find_column(
-            total_candidates
-        )
-    
-        # --------------------------------------------------------
-        # 建立 merge dataframe
-        # --------------------------------------------------------
-    
-        insti_merge = pd.DataFrame()
-    
-        insti_merge["_merge_code"] = (
-            insti_df[insti_code_col]
-            .astype(str)
-            .str.strip()
-            .str.replace(
-                r"\.(TW|TWO)$",
-                "",
-                regex=True
-            )
-        )
-    
-        if foreign_col:
-    
-            insti_merge["foreign"] = pd.to_numeric(
-                insti_df[foreign_col],
-                errors="coerce"
-            )
-    
-        else:
-    
-            insti_merge["foreign"] = np.nan
-    
-        if trust_col:
-    
-            insti_merge["trust"] = pd.to_numeric(
-                insti_df[trust_col],
-                errors="coerce"
-            )
-    
-        else:
-    
-            insti_merge["trust"] = np.nan
-    
-        if dealer_col:
-    
-            insti_merge["dealer"] = pd.to_numeric(
-                insti_df[dealer_col],
-                errors="coerce"
-            )
-    
-        else:
-    
-            insti_merge["dealer"] = np.nan
-    
-        if total_col:
-    
-            insti_merge["institutional_total"] = pd.to_numeric(
-                insti_df[total_col],
-                errors="coerce"
-            )
-    
-        else:
-    
-            # 如果沒有總計欄位
-            # 自己加總三大法人
-            insti_merge["institutional_total"] = (
-                insti_merge["foreign"].fillna(0)
-                + insti_merge["trust"].fillna(0)
-                + insti_merge["dealer"].fillna(0)
-            )
-    
-        insti_merge = (
-            insti_merge
-            .drop_duplicates(
-                subset="_merge_code",
-                keep="first"
-            )
-        )
-    
-        # --------------------------------------------------------
-        # 股票代號
-        # --------------------------------------------------------
-    
-        df["_merge_code"] = (
-            df["ticker"]
-            .astype(str)
-            .str.strip()
-            .str.replace(
-                r"\.(TW|TWO)$",
-                "",
-                regex=True
-            )
-        )
-    
-        # --------------------------------------------------------
-        # 合併
-        # --------------------------------------------------------
-    
-        df = pd.merge(
-            df,
-            insti_merge[
-                [
-                    "_merge_code",
-                    "foreign",
-                    "trust",
-                    "dealer",
-                    "institutional_total",
-                ]
-            ],
-            on="_merge_code",
-            how="left"
-        )
-    
-        df = df.drop(
-            columns=["_merge_code"]
-        )
-    
-        return df
+    df = merge_tab4_revenue(df)
     
     
     # ============================================================
-    # 9. TAB 10 主程式
+    # 合併 TAB 9
     # ============================================================
     
-    with tab10:
+    df = merge_institutional_data(df)
     
-        st.subheader(
-            "🏆 台股 100 分多因子評分"
+    
+    # ============================================================
+    # 技術條件
+    # ============================================================
+    
+    df["price_ma20"] = np.where(
+    
+        df["price"].notna()
+        & df["ma20"].notna(),
+    
+        (
+            df["price"]
+            > df["ma20"]
+        ).astype(float),
+    
+        np.nan
+    )
+    
+    
+    df["ma20_ma60"] = np.where(
+    
+        df["ma20"].notna()
+        & df["ma60"].notna(),
+    
+        (
+            df["ma20"]
+            > df["ma60"]
+        ).astype(float),
+    
+        np.nan
+    )
+    
+    
+    df["price_ma120"] = np.where(
+    
+        df["price"].notna()
+        & df["ma120"].notna(),
+    
+        (
+            df["price"]
+            > df["ma120"]
+        ).astype(float),
+    
+        np.nan
+    )
+    
+    
+    df["ma60_ma120"] = np.where(
+    
+        df["ma60"].notna()
+        & df["ma120"].notna(),
+    
+        (
+            df["ma60"]
+            > df["ma120"]
+        ).astype(float),
+    
+        np.nan
+    )
+    
+    
+    # ============================================================
+    # 籌碼資料
+    #
+    # 如果沒有 TAB 9 資料：
+    # 不會直接變成 0
+    # ============================================================
+    
+    for col in [
+        "foreign",
+        "trust",
+        "dealer",
+        "institutional_total",
+    ]:
+    
+        if col not in df.columns:
+            df[col] = np.nan
+    
+    
+    # ============================================================
+    # 三率三升
+    # ============================================================
+    
+    if "triple_rise" not in df.columns:
+    
+        df["triple_rise"] = np.nan
+    
+    
+    # ============================================================
+    # EPS 成長
+    # ============================================================
+    
+    if "eps_growth" not in df.columns:
+    
+        df["eps_growth"] = np.nan
+    
+    
+    # ============================================================
+    # 開始計算六大因子
+    # ============================================================
+    
+    df = calculate_factor_score(
+        df,
+        "獲利能力",
+        SCORE_WEIGHTS["獲利能力"]
+    )
+    
+    
+    df = calculate_factor_score(
+        df,
+        "成長性",
+        SCORE_WEIGHTS["成長性"]
+    )
+    
+    
+    df = calculate_factor_score(
+        df,
+        "評價",
+        SCORE_WEIGHTS["評價"]
+    )
+    
+    
+    df = calculate_factor_score(
+        df,
+        "技術面",
+        SCORE_WEIGHTS["技術面"]
+    )
+    
+    
+    df = calculate_factor_score(
+        df,
+        "籌碼面",
+        SCORE_WEIGHTS["籌碼面"]
+    )
+    
+    
+    df = calculate_factor_score(
+        df,
+        "低波風險",
+        SCORE_WEIGHTS["低波風險"]
+    )
+    
+    
+    # ============================================================
+    # 12. 總分
+    # ============================================================
+    
+    factor_columns = [
+        "獲利能力得分",
+        "成長性得分",
+        "評價得分",
+        "技術面得分",
+        "籌碼面得分",
+        "低波風險得分",
+    ]
+    
+    
+    # ------------------------------------------------------------
+    # 重要：
+    #
+    # min_count=1
+    #
+    # 避免全部 NaN 時被 pandas sum() 當成 0
+    # ------------------------------------------------------------
+    
+    df["總分"] = df[
+        factor_columns
+    ].sum(
+        axis=1,
+        min_count=1
+    )
+    
+    
+    # ============================================================
+    # 13. 資料完整度
+    # ============================================================
+    
+    completeness_columns = [
+        "獲利能力完整度",
+        "成長性完整度",
+        "評價完整度",
+        "技術面完整度",
+        "籌碼面完整度",
+        "低波風險完整度",
+    ]
+    
+    
+    df["資料完整度"] = (
+        df[completeness_columns]
+        .mean(axis=1)
+    )
+    
+    
+    # ============================================================
+    # 14. 排名
+    # ============================================================
+    
+    df = df.sort_values(
+        by=[
+            "總分",
+            "資料完整度"
+        ],
+        ascending=[
+            False,
+            False
+        ],
+        na_position="last"
+    ).reset_index(drop=True)
+    
+    
+    df["排名"] = np.arange(
+        1,
+        len(df) + 1
+    )
+    
+    
+    # ============================================================
+    # 15. 顯示 KPI
+    # ============================================================
+    
+    k1, k2, k3, k4 = st.columns(4)
+    
+    
+    valid_score_count = (
+        df["總分"].notna().sum()
+    )
+    
+    
+    with k1:
+    
+        st.metric(
+            "監控股票",
+            f"{len(df)} 檔"
         )
     
-        st.caption(
-            "獲利 25｜成長 20｜評價 15｜技術 15｜籌碼 15｜低波 10"
+    
+    with k2:
+    
+        st.metric(
+            "有評分資料",
+            f"{valid_score_count} 檔"
         )
     
-        # ========================================================
-        # 強制更新
-        # ========================================================
     
-        refresh_col1, refresh_col2 = st.columns(
-            [1, 5]
-        )
+    with k3:
     
-        with refresh_col1:
-    
-            force_refresh = st.button(
-                "🔄 強制更新",
-                key="tab10_force_refresh",
-                use_container_width=True
-            )
-    
-        if force_refresh:
-    
-            # 只清除 TAB 10 Yahoo cache
-            # 不影響 TAB 4 / TAB 9
-            get_score_stock_data.clear()
-    
-            st.rerun()
-    
-        # ========================================================
-        # 取得股票清單
-        # ========================================================
-    
-        score_stock_list = get_score_stock_list()
-    
-        if not score_stock_list:
-    
-            st.warning(
-                "⚠️ 尚未取得監控股票清單，"
-                "請確認 TAB 1 已建立 st.session_state.my_stocks。"
-            )
-    
-            st.stop()
-    
-        st.caption(
-            f"監控股票：{len(score_stock_list)} 檔"
-        )
-    
-        # ========================================================
-        # 取得 TAB 4
-        # ========================================================
-    
-        revenue_data_tab4 = (
-            get_revenue_data_from_tab4()
-        )
-    
-        # ========================================================
-        # 取得 TAB 9
-        # ========================================================
-    
-        institutional_data_tab9 = (
-            get_institutional_data_from_tab9()
-        )
-    
-        # ========================================================
-        # 建立股票資料
-        # ========================================================
-    
-        data_list = []
-    
-        progress = st.progress(
-            0,
-            text="正在計算多因子評分..."
-        )
-    
-        total_stocks = len(
-            score_stock_list
-        )
-    
-        for i, (ticker, stock_name) in enumerate(
-            score_stock_list.items(),
-            start=1
-        ):
-    
-            try:
-    
-                metrics = get_score_stock_data(
-                    ticker
-                )
-    
-                row = metrics.copy()
-    
-                # ------------------------------------------------
-                # 使用監控清單名稱
-                # ------------------------------------------------
-    
-                row["ticker"] = ticker
-    
-                row["name"] = (
-                    str(stock_name)
-                    if stock_name
-                    else row.get(
-                        "yahoo_name",
-                        ticker
-                    )
-                )
-    
-                data_list.append(row)
-    
-            except Exception:
-    
-                continue
-    
-            progress.progress(
-                i / total_stocks,
-                text=f"分析 {ticker} ..."
-            )
-    
-        progress.empty()
-    
-        # ========================================================
-        # 無資料
-        # ========================================================
-    
-        if not data_list:
-    
-            st.error(
-                "❌ 無法取得股票資料。"
-                "請確認股票代號或 Yahoo Finance 是否正常。"
-            )
-    
-            st.stop()
-    
-        # ========================================================
-        # DataFrame
-        # ========================================================
-    
-        df = pd.DataFrame(
-            data_list
-        )
-    
-        # ========================================================
-        # TAB 4
-        # ========================================================
-    
-        df = merge_tab4_data(
-            df
-        )
-    
-        # ========================================================
-        # TAB 9
-        # ========================================================
-    
-        df = merge_tab9_data(
-            df
-        )
-    
-        # ========================================================
-        # 技術面條件
-        # ========================================================
-    
-        df["股價 > MA20"] = np.where(
-            (
-                df["price"].notna()
-                & df["ma20"].notna()
-            ),
-            (
-                df["price"]
-                > df["ma20"]
-            ).astype(float),
-            np.nan
-        )
-    
-        df["MA20 > MA60"] = np.where(
-            (
-                df["ma20"].notna()
-                & df["ma60"].notna()
-            ),
-            (
-                df["ma20"]
-                > df["ma60"]
-            ).astype(float),
-            np.nan
-        )
-    
-        df["股價 > MA120"] = np.where(
-            (
-                df["price"].notna()
-                & df["ma120"].notna()
-            ),
-            (
-                df["price"]
-                > df["ma120"]
-            ).astype(float),
-            np.nan
-        )
-    
-        df["MA60 > MA120"] = np.where(
-            (
-                df["ma60"].notna()
-                & df["ma120"].notna()
-            ),
-            (
-                df["ma60"]
-                > df["ma120"]
-            ).astype(float),
-            np.nan
-        )
-    
-        # ========================================================
-        # 10. 建立百分位評分
-        # ========================================================
-    
-        # --------------------------------------------------------
-        # 獲利能力
-        # --------------------------------------------------------
-    
-        df["__score_ROE"] = score_percentile(
-            df["roe"],
-            higher_is_better=True
-        )
-    
-        df["__score_ROA"] = score_percentile(
-            df["roa"],
-            higher_is_better=True
-        )
-    
-        df["__score_營業利益率"] = score_percentile(
-            df["operating_margin"],
-            higher_is_better=True
-        )
-    
-        df["__score_EPS"] = score_percentile(
-            df["eps"],
-            higher_is_better=True
-        )
-    
-        # --------------------------------------------------------
-        # 成長性
-        # --------------------------------------------------------
-    
-        df["__score_營收成長"] = score_percentile(
-            df["revenue_growth"],
-            higher_is_better=True
-        )
-    
-        df["__score_EPS成長"] = score_percentile(
-            df["eps_growth"],
-            higher_is_better=True
-        )
-    
-        # --------------------------------------------------------
-        # 三率三升
-        #
-        # 不使用百分位
-        #
-        # 🔥 三率三升 = 5 分
-        # 其他 = 0 分
-        # --------------------------------------------------------
-    
-        df["__score_三率三升"] = np.where(
-            df["三率三升"]
-            .astype(str)
-            .str.strip()
-            .isin([
-                "🔥 三率三升",
-                "三率三升",
-                "1",
-                "1.0",
-                "True",
-                "true",
-            ]),
-            1.0,
-            0.0
-        )
-    
-        # --------------------------------------------------------
-        # 評價
-        #
-        # PE / PB / PEG 越低越好
-        # --------------------------------------------------------
-    
-        # 避免負 PE / 0 PE 干擾
-        pe_valid = df["pe"].where(
-            df["pe"] > 0
-        )
-    
-        pb_valid = df["pb"].where(
-            df["pb"] > 0
-        )
-    
-        peg_valid = df["peg"].where(
-            df["peg"] > 0
-        )
-    
-        df["__score_PE"] = score_percentile(
-            pe_valid,
-            higher_is_better=False
-        )
-    
-        df["__score_PB"] = score_percentile(
-            pb_valid,
-            higher_is_better=False
-        )
-    
-        df["__score_PEG"] = score_percentile(
-            peg_valid,
-            higher_is_better=False
-        )
-    
-        # --------------------------------------------------------
-        # 技術面
-        # --------------------------------------------------------
-    
-        df["__score_股價 > MA20"] = df[
-            "股價 > MA20"
-        ]
-    
-        df["__score_MA20 > MA60"] = df[
-            "MA20 > MA60"
-        ]
-    
-        df["__score_股價 > MA120"] = df[
-            "股價 > MA120"
-        ]
-    
-        df["__score_MA60 > MA120"] = df[
-            "MA60 > MA120"
-        ]
-    
-        df["__score_20日趨勢"] = score_percentile(
-            df["trend20"],
-            higher_is_better=True
-        )
-    
-        # --------------------------------------------------------
-        # 籌碼面
-        #
-        # 買超越多越好
-        # --------------------------------------------------------
-    
-        df["__score_外資"] = score_percentile(
-            df["foreign"],
-            higher_is_better=True
-        )
-    
-        df["__score_投信"] = score_percentile(
-            df["trust"],
-            higher_is_better=True
-        )
-    
-        df["__score_自營商"] = score_percentile(
-            df["dealer"],
-            higher_is_better=True
-        )
-    
-        df["__score_三大法人"] = score_percentile(
-            df["institutional_total"],
-            higher_is_better=True
-        )
-    
-        # --------------------------------------------------------
-        # 低波風險
-        #
-        # 波動越低越好
-        #
-        # 最大回撤越接近 0 越好
-        # --------------------------------------------------------
-    
-        df["__score_3個月波動"] = score_percentile(
-            df["vol_3m"],
-            higher_is_better=False
-        )
-    
-        df["__score_6個月波動"] = score_percentile(
-            df["vol_6m"],
-            higher_is_better=False
-        )
-    
-        df["__score_1年波動"] = score_percentile(
-            df["vol_1y"],
-            higher_is_better=False
-        )
-    
-        df["__score_最大回撤"] = score_percentile(
-            df["max_drawdown"],
-            higher_is_better=True
-        )
-    
-        # ========================================================
-        # 11. 計算六大因子分數
-        # ========================================================
-    
-        # --------------------------------------------------------
-        # 獲利能力 25
-        # --------------------------------------------------------
-    
-        df["獲利能力"] = calculate_factor_score(
-            df,
-            [
-                "ROE",
-                "ROA",
-                "營業利益率",
-                "EPS",
-            ],
-            SCORE_WEIGHTS["獲利能力"]
-        )
-    
-        # --------------------------------------------------------
-        # 成長性 20
-        # --------------------------------------------------------
-    
-        df["成長性"] = calculate_factor_score(
-            df,
-            [
-                "營收成長",
-                "EPS成長",
-                "三率三升",
-            ],
-            SCORE_WEIGHTS["成長性"]
-        )
-    
-        # --------------------------------------------------------
-        # 評價 15
-        # --------------------------------------------------------
-    
-        df["評價"] = calculate_factor_score(
-            df,
-            [
-                "PE",
-                "PB",
-                "PEG",
-            ],
-            SCORE_WEIGHTS["評價"]
-        )
-    
-        # --------------------------------------------------------
-        # 技術面 15
-        # --------------------------------------------------------
-    
-        df["技術面"] = calculate_factor_score(
-            df,
-            [
-                "股價 > MA20",
-                "MA20 > MA60",
-                "股價 > MA120",
-                "MA60 > MA120",
-                "20日趨勢",
-            ],
-            SCORE_WEIGHTS["技術面"]
-        )
-    
-        # --------------------------------------------------------
-        # 籌碼面 15
-        # --------------------------------------------------------
-    
-        df["籌碼面"] = calculate_factor_score(
-            df,
-            [
-                "外資",
-                "投信",
-                "自營商",
-                "三大法人",
-            ],
-            SCORE_WEIGHTS["籌碼面"]
-        )
-    
-        # --------------------------------------------------------
-        # 低波風險 10
-        # --------------------------------------------------------
-    
-        df["低波風險"] = calculate_factor_score(
-            df,
-            [
-                "3個月波動",
-                "6個月波動",
-                "1年波動",
-                "最大回撤",
-            ],
-            SCORE_WEIGHTS["低波風險"]
-        )
-    
-        # ========================================================
-        # 12. 總分
-        # ========================================================
-    
-        factor_columns = [
-            "獲利能力",
-            "成長性",
-            "評價",
-            "技術面",
-            "籌碼面",
-            "低波風險",
-        ]
-    
-        # --------------------------------------------------------
-        # 各因子如果完全沒有資料則為 NaN
-        # 總分只加有資料的因子
-        # --------------------------------------------------------
-    
-        df["total_score"] = (
-            df[factor_columns]
-            .sum(
-                axis=1,
-                min_count=1
-            )
-        )
-    
-        # --------------------------------------------------------
-        # 資料完整度
-        # --------------------------------------------------------
-    
-        total_weight = sum(
-            SCORE_WEIGHTS["獲利能力"].values()
-        ) + sum(
-            SCORE_WEIGHTS["成長性"].values()
-        ) + sum(
-            SCORE_WEIGHTS["評價"].values()
-        ) + sum(
-            SCORE_WEIGHTS["技術面"].values()
-        ) + sum(
-            SCORE_WEIGHTS["籌碼面"].values()
-        ) + sum(
-            SCORE_WEIGHTS["低波風險"].values()
-        )
-    
-        df["available_weight"] = 0.0
-    
-        # --------------------------------------------------------
-        # 逐因子計算實際可用權重
-        # --------------------------------------------------------
-    
-        for factor_name, weights in SCORE_WEIGHTS.items():
-    
-            for component, weight in weights.items():
-    
-                score_column = (
-                    f"__score_{component}"
-                )
-    
-                if score_column not in df.columns:
-                    continue
-    
-                valid = df[score_column].notna()
-    
-                df.loc[
-                    valid,
-                    "available_weight"
-                ] += weight
-    
-        df["資料完整度"] = (
-            df["available_weight"]
-            / total_weight
-            * 100
-        )
-    
-        # ========================================================
-        # 13. 最終排序
-        # ========================================================
-    
-        df = df.sort_values(
-            [
-                "total_score",
-                "資料完整度",
-            ],
-            ascending=[
-                False,
-                False,
-            ]
-        ).reset_index(
-            drop=True
-        )
-    
-        df["排名"] = (
-            np.arange(
-                1,
-                len(df) + 1
-            )
-        )
-    
-        # ========================================================
-        # 14. KPI
-        # ========================================================
-    
-        k1, k2, k3, k4 = st.columns(4)
-    
-        with k1:
-    
-            st.metric(
-                "📊 股票數",
-                len(df)
-            )
-    
-        with k2:
-    
-            if df["total_score"].notna().any():
-    
-                st.metric(
-                    "🏆 最高分",
-                    f"{df['total_score'].max():.1f}"
-                )
-    
-            else:
-    
-                st.metric(
-                    "🏆 最高分",
-                    "-"
-                )
-    
-        with k3:
+        if valid_score_count > 0:
     
             avg_score = df[
-                "total_score"
+                "總分"
             ].mean()
     
-            if pd.notna(avg_score):
+            st.metric(
+                "平均分數",
+                f"{avg_score:.1f}"
+            )
     
-                st.metric(
-                    "📈 平均分",
-                    f"{avg_score:.1f}"
-                )
+        else:
     
-            else:
+            st.metric(
+                "平均分數",
+                "—"
+            )
     
-                st.metric(
-                    "📈 平均分",
-                    "-"
-                )
     
-        with k4:
+    with k4:
     
-            avg_complete = df[
-                "資料完整度"
-            ].mean()
+        if valid_score_count > 0:
     
-            if pd.notna(avg_complete):
+            top_score = df[
+                "總分"
+            ].max()
     
-                st.metric(
-                    "📋 平均資料完整度",
-                    f"{avg_complete:.1f}%"
-                )
+            st.metric(
+                "最高分",
+                f"{top_score:.1f}"
+            )
     
-            else:
+        else:
     
-                st.metric(
-                    "📋 平均資料完整度",
-                    "-"
-                )
+            st.metric(
+                "最高分",
+                "—"
+            )
     
-        # ========================================================
-        # 15. 排名表
-        # ========================================================
     
-        st.markdown(
-            "### 🏆 多因子股票排名"
-        )
+    # ============================================================
+    # 16. 股票總排名
+    # ============================================================
     
-        ranking_columns = [
+    st.markdown("### 🏆 多因子總排名")
+    
+    
+    ranking_df = df[
+        [
             "排名",
             "ticker",
             "name",
-            "total_score",
+            "總分",
+            "資料完整度",
+            "獲利能力得分",
+            "成長性得分",
+            "評價得分",
+            "技術面得分",
+            "籌碼面得分",
+            "低波風險得分",
+        ]
+    ].copy()
+    
+    
+    ranking_df.columns = [
+        "排名",
+        "代號",
+        "名稱",
+        "總分",
+        "資料完整度",
+        "獲利",
+        "成長",
+        "評價",
+        "技術",
+        "籌碼",
+        "低波",
+    ]
+    
+    
+    # ------------------------------------------------------------
+    # 格式化
+    # ------------------------------------------------------------
+    
+    for col in [
+        "總分",
+        "獲利",
+        "成長",
+        "評價",
+        "技術",
+        "籌碼",
+        "低波",
+    ]:
+    
+        ranking_df[col] = ranking_df[
+            col
+        ].round(1)
+    
+    
+    ranking_df["資料完整度"] = (
+        ranking_df["資料完整度"]
+        * 100
+    ).round(0).astype("Int64").astype(str) + "%"
+    
+    
+    st.dataframe(
+        ranking_df,
+        use_container_width=True,
+        hide_index=True
+    )
+    
+    
+    # ============================================================
+    # 17. 個股詳細評分
+    # ============================================================
+    
+    st.markdown("### 🔎 個股詳細評分")
+    
+    
+    stock_options = (
+        df["ticker"]
+        .astype(str)
+        .tolist()
+    )
+    
+    
+    selected_ticker = st.selectbox(
+        "選擇股票",
+        stock_options,
+        format_func=lambda x: (
+            f"{x} "
+            f"{df.loc[df['ticker'] == x, 'name'].iloc[0]}"
+            if (
+                len(
+                    df.loc[
+                        df["ticker"] == x,
+                        "name"
+                    ]
+                ) > 0
+            )
+            else x
+        ),
+        key="tab10_selected_ticker"
+    )
+    
+    
+    stock_row = df[
+        df["ticker"] == selected_ticker
+    ].iloc[0]
+    
+    
+    # ============================================================
+    # 18. 個股總分
+    # ============================================================
+    
+    c1, c2, c3 = st.columns(3)
+    
+    
+    with c1:
+    
+        total_score = stock_row["總分"]
+    
+        if pd.notna(total_score):
+    
+            st.metric(
+                "總分",
+                f"{total_score:.1f} / 100"
+            )
+    
+        else:
+    
+            st.metric(
+                "總分",
+                "—"
+            )
+    
+    
+    with c2:
+    
+        completeness = (
+            stock_row["資料完整度"]
+        )
+    
+        if pd.notna(completeness):
+    
+            st.metric(
+                "資料完整度",
+                f"{completeness * 100:.0f}%"
+            )
+    
+        else:
+    
+            st.metric(
+                "資料完整度",
+                "—"
+            )
+    
+    
+    with c3:
+    
+        st.metric(
+            "排名",
+            (
+                f"第 {int(stock_row['排名'])} 名"
+                if pd.notna(
+                    stock_row["排名"]
+                )
+                else "—"
+            )
+        )
+    
+    
+    # ============================================================
+    # 19. 六大因子圖
+    # ============================================================
+    
+    factor_names = [
+        "獲利能力得分",
+        "成長性得分",
+        "評價得分",
+        "技術面得分",
+        "籌碼面得分",
+        "低波風險得分",
+    ]
+    
+    
+    factor_display_names = [
+        "獲利能力",
+        "成長性",
+        "評價",
+        "技術面",
+        "籌碼面",
+        "低波風險",
+    ]
+    
+    
+    factor_values = []
+    
+    
+    for col in factor_names:
+    
+        value = stock_row[col]
+    
+        if pd.isna(value):
+            value = 0
+    
+        factor_values.append(value)
+    
+    
+    fig = go.Figure()
+    
+    
+    fig.add_trace(
+        go.Bar(
+            x=factor_display_names,
+            y=factor_values,
+            text=[
+                f"{v:.1f}"
+                for v in factor_values
+            ],
+            textposition="auto",
+        )
+    )
+    
+    
+    fig.update_layout(
+        title=(
+            f"{selected_ticker} "
+            f"{stock_row['name']}｜六大因子"
+        ),
+        yaxis_title="得分",
+        yaxis_range=[0, 25],
+        height=400,
+    )
+    
+    
+    st.plotly_chart(
+        fig,
+        use_container_width=True
+    )
+    
+    
+    # ============================================================
+    # 20. 獲利能力詳細
+    # ============================================================
+    
+    with st.expander(
+        "💰 獲利能力詳細資料",
+        expanded=True
+    ):
+    
+        profit_col1, profit_col2 = st.columns(2)
+    
+        with profit_col1:
+    
+            st.write(
+                f"ROE："
+                f"{stock_row['roe'] * 100:.2f}%"
+                if pd.notna(stock_row["roe"])
+                else "ROE：—"
+            )
+    
+            st.write(
+                f"ROA："
+                f"{stock_row['roa'] * 100:.2f}%"
+                if pd.notna(stock_row["roa"])
+                else "ROA：—"
+            )
+    
+        with profit_col2:
+    
+            st.write(
+                f"營業利益率："
+                f"{stock_row['operating_margin'] * 100:.2f}%"
+                if pd.notna(
+                    stock_row["operating_margin"]
+                )
+                else "營業利益率：—"
+            )
+    
+            st.write(
+                f"EPS："
+                f"{stock_row['eps']:.2f}"
+                if pd.notna(stock_row["eps"])
+                else "EPS：—"
+            )
+    
+    
+    # ============================================================
+    # 21. 成長性
+    # ============================================================
+    
+    with st.expander(
+        "🚀 成長性詳細資料",
+        expanded=True
+    ):
+    
+        growth_col1, growth_col2 = st.columns(2)
+    
+        with growth_col1:
+    
+            st.write(
+                f"營收 YoY："
+                f"{stock_row['revenue_growth'] * 100:.2f}%"
+                if pd.notna(
+                    stock_row["revenue_growth"]
+                )
+                else "營收 YoY：—"
+            )
+    
+            st.write(
+                f"EPS 成長："
+                f"{stock_row['eps_growth'] * 100:.2f}%"
+                if pd.notna(
+                    stock_row["eps_growth"]
+                )
+                else "EPS 成長：—"
+            )
+    
+        with growth_col2:
+    
+            triple_value = (
+                stock_row["triple_rise"]
+            )
+    
+            if pd.isna(triple_value):
+    
+                triple_text = "—"
+    
+            elif triple_value >= 1:
+    
+                triple_text = "✅ 三率三升"
+    
+            else:
+    
+                triple_text = "❌ 非三率三升"
+    
+            st.write(
+                f"三率三升：{triple_text}"
+            )
+    
+    
+    # ============================================================
+    # 22. 評價
+    # ============================================================
+    
+    with st.expander(
+        "💵 評價詳細資料",
+        expanded=True
+    ):
+    
+        val_col1, val_col2, val_col3 = st.columns(3)
+    
+        with val_col1:
+    
+            st.write(
+                f"本益比 PE："
+                f"{stock_row['pe']:.2f}"
+                if pd.notna(stock_row["pe"])
+                else "本益比 PE：—"
+            )
+    
+        with val_col2:
+    
+            st.write(
+                f"股價淨值比 PB："
+                f"{stock_row['pb']:.2f}"
+                if pd.notna(stock_row["pb"])
+                else "股價淨值比 PB：—"
+            )
+    
+        with val_col3:
+    
+            st.write(
+                f"PEG："
+                f"{stock_row['peg']:.2f}"
+                if pd.notna(stock_row["peg"])
+                else "PEG：—"
+            )
+    
+    
+    # ============================================================
+    # 23. 技術面
+    # ============================================================
+    
+    with st.expander(
+        "📈 技術面詳細資料",
+        expanded=True
+    ):
+    
+        tech_col1, tech_col2 = st.columns(2)
+    
+        with tech_col1:
+    
+            st.write(
+                f"現價："
+                f"{stock_row['price']:.2f}"
+                if pd.notna(stock_row["price"])
+                else "現價：—"
+            )
+    
+            st.write(
+                f"MA20："
+                f"{stock_row['ma20']:.2f}"
+                if pd.notna(stock_row["ma20"])
+                else "MA20：—"
+            )
+    
+            st.write(
+                f"MA60："
+                f"{stock_row['ma60']:.2f}"
+                if pd.notna(stock_row["ma60"])
+                else "MA60：—"
+            )
+    
+            st.write(
+                f"MA120："
+                f"{stock_row['ma120']:.2f}"
+                if pd.notna(stock_row["ma120"])
+                else "MA120：—"
+            )
+    
+        with tech_col2:
+    
+            def yes_no(value):
+    
+                if pd.isna(value):
+                    return "—"
+    
+                return (
+                    "✅"
+                    if value > 0
+                    else "❌"
+                )
+    
+            st.write(
+                f"股價 > MA20："
+                f"{yes_no(stock_row['price_ma20'])}"
+            )
+    
+            st.write(
+                f"MA20 > MA60："
+                f"{yes_no(stock_row['ma20_ma60'])}"
+            )
+    
+            st.write(
+                f"股價 > MA120："
+                f"{yes_no(stock_row['price_ma120'])}"
+            )
+    
+            st.write(
+                f"MA60 > MA120："
+                f"{yes_no(stock_row['ma60_ma120'])}"
+            )
+    
+            st.write(
+                f"20日趨勢："
+                + (
+                    f"{stock_row['trend20'] * 100:.2f}%"
+                    if pd.notna(
+                        stock_row["trend20"]
+                    )
+                    else "—"
+                )
+            )
+    
+    
+    # ============================================================
+    # 24. 籌碼
+    # ============================================================
+    
+    with st.expander(
+        "🏦 三大法人詳細資料",
+        expanded=True
+    ):
+    
+        inst_col1, inst_col2 = st.columns(2)
+    
+        with inst_col1:
+    
+            st.write(
+                f"外資："
+                + (
+                    f"{stock_row['foreign']:,.0f}"
+                    if pd.notna(
+                        stock_row["foreign"]
+                    )
+                    else "—"
+                )
+            )
+    
+            st.write(
+                f"投信："
+                + (
+                    f"{stock_row['trust']:,.0f}"
+                    if pd.notna(
+                        stock_row["trust"]
+                    )
+                    else "—"
+                )
+            )
+    
+        with inst_col2:
+    
+            st.write(
+                f"自營商："
+                + (
+                    f"{stock_row['dealer']:,.0f}"
+                    if pd.notna(
+                        stock_row["dealer"]
+                    )
+                    else "—"
+                )
+            )
+    
+            st.write(
+                f"三大法人合計："
+                + (
+                    f"{stock_row['institutional_total']:,.0f}"
+                    if pd.notna(
+                        stock_row[
+                            "institutional_total"
+                        ]
+                    )
+                    else "—"
+                )
+            )
+    
+    
+    # ============================================================
+    # 25. 低波風險
+    # ============================================================
+    
+    with st.expander(
+        "🛡️ 低波風險詳細資料",
+        expanded=True
+    ):
+    
+        risk_col1, risk_col2 = st.columns(2)
+    
+        with risk_col1:
+    
+            st.write(
+                f"3個月年化波動："
+                + (
+                    f"{stock_row['vol_3m'] * 100:.2f}%"
+                    if pd.notna(
+                        stock_row["vol_3m"]
+                    )
+                    else "—"
+                )
+            )
+    
+            st.write(
+                f"6個月年化波動："
+                + (
+                    f"{stock_row['vol_6m'] * 100:.2f}%"
+                    if pd.notna(
+                        stock_row["vol_6m"]
+                    )
+                    else "—"
+                )
+            )
+    
+        with risk_col2:
+    
+            st.write(
+                f"1年年化波動："
+                + (
+                    f"{stock_row['vol_1y'] * 100:.2f}%"
+                    if pd.notna(
+                        stock_row["vol_1y"]
+                    )
+                    else "—"
+                )
+            )
+    
+            st.write(
+                f"最大回撤："
+                + (
+                    f"{stock_row['max_drawdown'] * 100:.2f}%"
+                    if pd.notna(
+                        stock_row["max_drawdown"]
+                    )
+                    else "—"
+                )
+            )
+    
+    
+    # ============================================================
+    # 26. 資料完整度
+    # ============================================================
+    
+    st.markdown("### 📋 資料完整度")
+    
+    
+    completeness_df = pd.DataFrame({
+    
+        "因子": [
             "獲利能力",
             "成長性",
             "評價",
             "技術面",
             "籌碼面",
             "低波風險",
+        ],
+    
+        "完整度": [
+            stock_row["獲利能力完整度"],
+            stock_row["成長性完整度"],
+            stock_row["評價完整度"],
+            stock_row["技術面完整度"],
+            stock_row["籌碼面完整度"],
+            stock_row["低波風險完整度"],
+        ],
+    })
+    
+    
+    completeness_df["完整度"] = (
+        completeness_df["完整度"]
+        * 100
+    ).round(0)
+    
+    
+    st.dataframe(
+        completeness_df,
+        use_container_width=True,
+        hide_index=True
+    )
+    
+    
+    # ============================================================
+    # 27. 原始資料 Debug
+    # ============================================================
+    
+    with st.expander(
+        "🔧 原始資料 / Debug",
+        expanded=False
+    ):
+    
+        debug_columns = [
+    
+            "ticker",
+            "name",
+    
+            "price",
+            "ma20",
+            "ma60",
+            "ma120",
+            "trend20",
+    
+            "roe",
+            "roa",
+            "operating_margin",
+            "eps",
+    
+            "revenue_growth",
+            "eps_growth",
+            "triple_rise",
+    
+            "pe",
+            "pb",
+            "peg",
+    
+            "foreign",
+            "trust",
+            "dealer",
+            "institutional_total",
+    
+            "vol_3m",
+            "vol_6m",
+            "vol_1y",
+            "max_drawdown",
+    
+            "總分",
             "資料完整度",
-            "三率三升",
         ]
     
-        ranking_columns = [
-            c for c in ranking_columns
+    
+        debug_columns = [
+            c
+            for c in debug_columns
             if c in df.columns
         ]
     
-        ranking_df = df[
-            ranking_columns
+    
+        debug_df = df[
+            debug_columns
         ].copy()
     
-        ranking_df = ranking_df.rename(
-            columns={
-                "ticker": "代號",
-                "name": "名稱",
-                "total_score": "總分",
-            }
-        )
-    
-        # --------------------------------------------------------
-        # 數字格式
-        # --------------------------------------------------------
-    
-        score_display_columns = [
-            "總分",
-            "獲利能力",
-            "成長性",
-            "評價",
-            "技術面",
-            "籌碼面",
-            "低波風險",
-            "資料完整度",
-        ]
-    
-        for col in score_display_columns:
-    
-            if col in ranking_df.columns:
-    
-                ranking_df[col] = ranking_df[
-                    col
-                ].round(1)
     
         st.dataframe(
-            ranking_df,
+            debug_df,
             use_container_width=True,
-            hide_index=True,
-            column_config={
-    
-                "排名":
-                    st.column_config.NumberColumn(
-                        "排名",
-                        format="%d"
-                    ),
-    
-                "總分":
-                    st.column_config.NumberColumn(
-                        "總分",
-                        format="%.1f"
-                    ),
-    
-                "獲利能力":
-                    st.column_config.NumberColumn(
-                        "獲利",
-                        format="%.1f"
-                    ),
-    
-                "成長性":
-                    st.column_config.NumberColumn(
-                        "成長",
-                        format="%.1f"
-                    ),
-    
-                "評價":
-                    st.column_config.NumberColumn(
-                        "評價",
-                        format="%.1f"
-                    ),
-    
-                "技術面":
-                    st.column_config.NumberColumn(
-                        "技術",
-                        format="%.1f"
-                    ),
-    
-                "籌碼面":
-                    st.column_config.NumberColumn(
-                        "籌碼",
-                        format="%.1f"
-                    ),
-    
-                "低波風險":
-                    st.column_config.NumberColumn(
-                        "低波",
-                        format="%.1f"
-                    ),
-    
-                "資料完整度":
-                    st.column_config.NumberColumn(
-                        "完整度",
-                        format="%.1f%%"
-                    ),
-            }
+            hide_index=True
         )
     
-        # ========================================================
-        # 16. 選擇股票詳細分析
-        # ========================================================
+    
+    # ============================================================
+    # 28. CSV 下載
+    # ============================================================
+    
+    st.markdown("### 📥 匯出")
+    
+    
+    export_columns = [
+        "排名",
+        "ticker",
+        "name",
+    
+        "總分",
+        "資料完整度",
+    
+        "獲利能力得分",
+        "成長性得分",
+        "評價得分",
+        "技術面得分",
+        "籌碼面得分",
+        "低波風險得分",
+    
+        "roe",
+        "roa",
+        "operating_margin",
+        "eps",
+    
+        "revenue_growth",
+        "eps_growth",
+        "triple_rise",
+    
+        "pe",
+        "pb",
+        "peg",
+    
+        "price",
+        "ma20",
+        "ma60",
+        "ma120",
+        "trend20",
+    
+        "foreign",
+        "trust",
+        "dealer",
+        "institutional_total",
+    
+        "vol_3m",
+        "vol_6m",
+        "vol_1y",
+        "max_drawdown",
+    ]
+    
+    
+    export_columns = [
+        c
+        for c in export_columns
+        if c in df.columns
+    ]
+    
+    
+    csv_data = df[
+        export_columns
+    ].to_csv(
+        index=False,
+        encoding="utf-8-sig"
+    )
+    
+    
+    st.download_button(
+        label="⬇️ 下載 TAB 10 評分 CSV",
+        data=csv_data,
+        file_name="台股100分多因子評分.csv",
+        mime="text/csv",
+        key="tab10_download_csv"
+    )
+    
+    
+    # ============================================================
+    # 29. 評分規則
+    # ============================================================
+    
+    with st.expander(
+        "📖 100 分評分規則",
+        expanded=False
+    ):
     
         st.markdown(
-            "### 🔎 個股詳細評分"
-        )
-    
-        stock_options = (
-            df["ticker"]
-            .astype(str)
-            .tolist()
-        )
-    
-        selected_ticker = st.selectbox(
-            "選擇股票",
-            stock_options,
-            key="tab10_selected_ticker"
-        )
-    
-        selected_row = df[
-            df["ticker"].astype(str)
-            == str(selected_ticker)
-        ]
-    
-        if not selected_row.empty:
-    
-            row = selected_row.iloc[0]
-    
-            selected_name = row.get(
-                "name",
-                selected_ticker
-            )
-    
-            st.markdown(
-                f"#### {selected_ticker} {selected_name}"
-            )
-    
-            # ----------------------------------------------------
-            # 六大因子
-            # ----------------------------------------------------
-    
-            factor_display = pd.DataFrame(
-                {
-                    "因子": [
-                        "獲利能力",
-                        "成長性",
-                        "評價",
-                        "技術面",
-                        "籌碼面",
-                        "低波風險",
-                    ],
-                    "分數": [
-                        row.get(
-                            "獲利能力",
-                            np.nan
-                        ),
-                        row.get(
-                            "成長性",
-                            np.nan
-                        ),
-                        row.get(
-                            "評價",
-                            np.nan
-                        ),
-                        row.get(
-                            "技術面",
-                            np.nan
-                        ),
-                        row.get(
-                            "籌碼面",
-                            np.nan
-                        ),
-                        row.get(
-                            "低波風險",
-                            np.nan
-                        ),
-                    ]
-                }
-            )
-    
-            st.bar_chart(
-                factor_display.set_index(
-                    "因子"
-                )
-            )
-    
-            # ----------------------------------------------------
-            # KPI
-            # ----------------------------------------------------
-    
-            c1, c2, c3 = st.columns(3)
-    
-            with c1:
-    
-                score_value = row.get(
-                    "total_score",
-                    np.nan
-                )
-    
-                if pd.notna(score_value):
-    
-                    st.metric(
-                        "總分",
-                        f"{score_value:.1f} / 100"
-                    )
-    
-                else:
-    
-                    st.metric(
-                        "總分",
-                        "-"
-                    )
-    
-            with c2:
-    
-                completeness = row.get(
-                    "資料完整度",
-                    np.nan
-                )
-    
-                if pd.notna(completeness):
-    
-                    st.metric(
-                        "資料完整度",
-                        f"{completeness:.1f}%"
-                    )
-    
-                else:
-    
-                    st.metric(
-                        "資料完整度",
-                        "-"
-                    )
-    
-            with c3:
-    
-                triple = row.get(
-                    "三率三升",
-                    "-"
-                )
-    
-                st.metric(
-                    "三率三升",
-                    triple
-                )
-    
-            # ====================================================
-            # 基本資料
-            # ====================================================
-    
-            st.markdown(
-                "##### 💰 獲利能力"
-            )
-    
-            profit_data = pd.DataFrame(
-                {
-                    "指標": [
-                        "ROE",
-                        "ROA",
-                        "營業利益率",
-                        "EPS",
-                    ],
-                    "數值": [
-                        row.get(
-                            "roe",
-                            np.nan
-                        ),
-                        row.get(
-                            "roa",
-                            np.nan
-                        ),
-                        row.get(
-                            "operating_margin",
-                            np.nan
-                        ),
-                        row.get(
-                            "eps",
-                            np.nan
-                        ),
-                    ]
-                }
-            )
-    
-            st.dataframe(
-                profit_data,
-                use_container_width=True,
-                hide_index=True
-            )
-    
-            # ====================================================
-            # 成長
-            # ====================================================
-    
-            st.markdown(
-                "##### 📈 成長性"
-            )
-    
-            growth_data = pd.DataFrame(
-                {
-                    "指標": [
-                        "營收年增率",
-                        "EPS 成長",
-                        "三率三升",
-                    ],
-                    "數值": [
-                        (
-                            row.get(
-                                "revenue_growth",
-                                np.nan
-                            ) * 100
-                            if pd.notna(
-                                row.get(
-                                    "revenue_growth",
-                                    np.nan
-                                )
-                            )
-                            else np.nan
-                        ),
-                        (
-                            row.get(
-                                "eps_growth",
-                                np.nan
-                            ) * 100
-                            if pd.notna(
-                                row.get(
-                                    "eps_growth",
-                                    np.nan
-                                )
-                            )
-                            else np.nan
-                        ),
-                        row.get(
-                            "三率三升",
-                            "-"
-                        ),
-                    ]
-                }
-            )
-    
-            st.dataframe(
-                growth_data,
-                use_container_width=True,
-                hide_index=True,
-                column_config={
-                    "數值":
-                        st.column_config.NumberColumn(
-                            "數值",
-                            format="%.2f"
-                        )
-                }
-            )
-    
-            # ====================================================
-            # 評價
-            # ====================================================
-    
-            st.markdown(
-                "##### 💵 評價"
-            )
-    
-            valuation_data = pd.DataFrame(
-                {
-                    "指標": [
-                        "PE",
-                        "PB",
-                        "PEG",
-                    ],
-                    "數值": [
-                        row.get(
-                            "pe",
-                            np.nan
-                        ),
-                        row.get(
-                            "pb",
-                            np.nan
-                        ),
-                        row.get(
-                            "peg",
-                            np.nan
-                        ),
-                    ]
-                }
-            )
-    
-            st.dataframe(
-                valuation_data,
-                use_container_width=True,
-                hide_index=True
-            )
-    
-            # ====================================================
-            # 技術
-            # ====================================================
-    
-            st.markdown(
-                "##### 📊 技術面"
-            )
-    
-            technical_data = pd.DataFrame(
-                {
-                    "指標": [
-                        "現價",
-                        "MA20",
-                        "MA60",
-                        "MA120",
-                        "20日趨勢",
-                    ],
-                    "數值": [
-                        row.get(
-                            "price",
-                            np.nan
-                        ),
-                        row.get(
-                            "ma20",
-                            np.nan
-                        ),
-                        row.get(
-                            "ma60",
-                            np.nan
-                        ),
-                        row.get(
-                            "ma120",
-                            np.nan
-                        ),
-                        (
-                            row.get(
-                                "trend20",
-                                np.nan
-                            ) * 100
-                            if pd.notna(
-                                row.get(
-                                    "trend20",
-                                    np.nan
-                                )
-                            )
-                            else np.nan
-                        ),
-                    ]
-                }
-            )
-    
-            st.dataframe(
-                technical_data,
-                use_container_width=True,
-                hide_index=True
-            )
-    
-            # ====================================================
-            # 籌碼
-            # ====================================================
-    
-            st.markdown(
-                "##### 🏦 籌碼面"
-            )
-    
-            institutional_detail = pd.DataFrame(
-                {
-                    "法人": [
-                        "外資",
-                        "投信",
-                        "自營商",
-                        "三大法人",
-                    ],
-                    "買賣超": [
-                        row.get(
-                            "foreign",
-                            np.nan
-                        ),
-                        row.get(
-                            "trust",
-                            np.nan
-                        ),
-                        row.get(
-                            "dealer",
-                            np.nan
-                        ),
-                        row.get(
-                            "institutional_total",
-                            np.nan
-                        ),
-                    ]
-                }
-            )
-    
-            st.dataframe(
-                institutional_detail,
-                use_container_width=True,
-                hide_index=True
-            )
-    
-            # ====================================================
-            # 低波
-            # ====================================================
-    
-            st.markdown(
-                "##### 🛡️ 低波風險"
-            )
-    
-            risk_detail = pd.DataFrame(
-                {
-                    "指標": [
-                        "3個月波動率",
-                        "6個月波動率",
-                        "1年波動率",
-                        "最大回撤",
-                    ],
-                    "數值": [
-                        (
-                            row.get(
-                                "vol_3m",
-                                np.nan
-                            ) * 100
-                            if pd.notna(
-                                row.get(
-                                    "vol_3m",
-                                    np.nan
-                                )
-                            )
-                            else np.nan
-                        ),
-                        (
-                            row.get(
-                                "vol_6m",
-                                np.nan
-                            ) * 100
-                            if pd.notna(
-                                row.get(
-                                    "vol_6m",
-                                    np.nan
-                                )
-                            )
-                            else np.nan
-                        ),
-                        (
-                            row.get(
-                                "vol_1y",
-                                np.nan
-                            ) * 100
-                            if pd.notna(
-                                row.get(
-                                    "vol_1y",
-                                    np.nan
-                                )
-                            )
-                            else np.nan
-                        ),
-                        (
-                            row.get(
-                                "max_drawdown",
-                                np.nan
-                            ) * 100
-                            if pd.notna(
-                                row.get(
-                                    "max_drawdown",
-                                    np.nan
-                                )
-                            )
-                            else np.nan
-                        ),
-                    ]
-                }
-            )
-    
-            st.dataframe(
-                risk_detail,
-                use_container_width=True,
-                hide_index=True
-            )
-    
-        # ========================================================
-        # 17. 完整原始資料
-        # ========================================================
-    
-        with st.expander(
-            "🔧 查看 TAB 10 原始計算資料"
-        ):
-    
-            raw_display = df.copy()
-    
-            # 移除內部評分欄位
-            internal_columns = [
-                c for c in raw_display.columns
-                if c.startswith("__score_")
-            ]
-    
-            if internal_columns:
-    
-                raw_display = raw_display.drop(
-                    columns=internal_columns
-                )
-    
-            st.dataframe(
-                raw_display,
-                use_container_width=True,
-                hide_index=True
-            )
-    
-        # ========================================================
-        # 18. CSV 下載
-        # ========================================================
-    
-        export_df = df.copy()
-    
-        # 移除內部欄位
-        internal_columns = [
-            c for c in export_df.columns
-            if c.startswith("__score_")
-        ]
-    
-        if internal_columns:
-    
-            export_df = export_df.drop(
-                columns=internal_columns
-            )
-    
-        csv_data = export_df.to_csv(
-            index=False
-        ).encode(
-            "utf-8-sig"
-        )
-    
-        st.download_button(
-            "📥 下載 TAB 10 評分 CSV",
-            data=csv_data,
-            file_name="TAB10_台股100分多因子評分.csv",
-            mime="text/csv",
-            use_container_width=True,
-            key="tab10_download_csv"
-        )
-    
-        # ========================================================
-        # 19. 評分規則
-        # ========================================================
-    
-        with st.expander(
-            "📖 TAB 10 評分規則"
-        ):
-    
-            st.markdown(
-                """
-    ### 🏆 台股 100 分多因子評分
+            """
+    ### 台股 100 分多因子評分 V3
     
     | 大因子 | 滿分 |
     |---|---:|
@@ -5119,147 +5226,95 @@ with tab10:
     | 技術面 | 15 |
     | 籌碼面 | 15 |
     | 低波風險 | 10 |
-    | **總分** | **100** |
+    | **總計** | **100** |
     
-    ### ① 獲利能力 25 分
-    
+    #### 獲利能力 25 分
     - ROE：8
     - ROA：5
     - 營業利益率：6
     - EPS：6
     
-    數值越高，百分位分數越高。
-    
-    ### ② 成長性 20 分
-    
-    - 營收成長：7
+    #### 成長性 20 分
+    - 營收 YoY：7
     - EPS 成長：8
     - 三率三升：5
     
-    「營收成長」優先使用 TAB 4 的年增率。
-    
-    「三率三升」直接使用：
-    
-    `rate.csv → TAB 4 → revenue_data → TAB 10`
-    
-    🔥 三率三升 = 5 分。
-    
-    ### ③ 評價 15 分
-    
+    #### 評價 15 分
     - PE：7
     - PB：4
     - PEG：4
+    - **越低越有利**
     
-    PE、PB、PEG 越低，分數越高。
-    
-    ### ④ 技術面 15 分
-    
+    #### 技術面 15 分
     - 股價 > MA20：3
     - MA20 > MA60：4
     - 股價 > MA120：3
     - MA60 > MA120：3
     - 20 日趨勢：2
     
-    ### ⑤ 籌碼面 15 分
-    
-    直接使用 TAB 9：
-    
+    #### 籌碼面 15 分
     - 外資：5
     - 投信：5
     - 自營商：2
     - 三大法人合計：3
     
-    買超越高，百分位越高。
-    
-    ### ⑥ 低波風險 10 分
-    
+    #### 低波風險 10 分
     - 3 個月波動率：3
     - 6 個月波動率：3
     - 1 年波動率：2
     - 最大回撤：2
-    
-    波動率越低，分數越高。
-    
-    最大回撤越接近 0，分數越高。
+    - **波動越低越有利**
     
     ---
     
-    ### 📌 缺資料處理
+    ### 缺資料處理
     
-    某一項沒有資料時，不會直接讓整個因子變成 0。
+    本版本不是：
     
-    系統會將該因子剩餘可用項目的權重重新正規化。
+    > 沒資料 = 0 分
     
-    例如獲利能力：
+    而是：
     
-    ROE 8 + ROA 5 + 營業利益率 6 + EPS 6 = 25
+    > 有資料的因子重新分配權重。
     
-    如果 ROA 沒資料：
+    例如獲利能力 25 分：
     
-    ROE + 營業利益率 + EPS
+    ROE 8 + ROA 5 + 營業利益率 6 + EPS 6
     
-    仍然會重新換算成 25 分。
+    如果 EPS 沒資料，
+    
+    剩下 19 分會重新換算成 25 分。
+    
+    因此不會因為單一資料來源缺失，
+    整檔股票被無故扣分。
     
     ---
     
-    ### 📌 快取
+    ### 快取
     
-    TAB 10 Yahoo Finance 資料：
+    Yahoo Finance：
     
-    **快取時間：1 小時**
+    **1 小時快取**
     
-    只要快取仍存在，就不重新呼叫 Yahoo Finance。
+    只要快取還存在：
     
-    「🔄 強制更新」只清除 TAB 10 自己的 Yahoo 評分快取，不會清除 TAB 4 / TAB 9 資料。
-    """
-            )
+    > 不重新呼叫 Yahoo Finance。
     
-        # ========================================================
-        # 20. 資料來源狀態
-        # ========================================================
+    只有按：
     
-        st.markdown("---")
+    **🔄 強制更新**
     
-        source_col1, source_col2, source_col3 = st.columns(3)
+    才會清除快取並重新取得資料。
+            """
+        )
     
-        with source_col1:
     
-            if not revenue_data_tab4.empty:
+    # ============================================================
+    # 30. 完成
+    # ============================================================
     
-                if "三率三升" in revenue_data_tab4.columns:
-    
-                    st.success(
-                        "✅ TAB 4：三率三升已載入"
-                    )
-    
-                else:
-    
-                    st.warning(
-                        "⚠️ TAB 4：沒有三率三升欄位"
-                    )
-    
-            else:
-    
-                st.warning(
-                    "⚠️ TAB 4：尚無營收資料"
-                )
-    
-        with source_col2:
-    
-            if not institutional_data_tab9.empty:
-    
-                st.success(
-                    "✅ TAB 9：三大法人已載入"
-                )
-    
-            else:
-    
-                st.warning(
-                    "⚠️ TAB 9：尚無法人資料"
-                )
-    
-        with source_col3:
-    
-            st.info(
-                "💾 Yahoo：1 小時快取"
-            )
+    st.caption(
+        "TAB 10 V3｜100 分多因子評分｜"
+        "Yahoo 1 小時快取｜"
+        "TAB 4 營收資料｜TAB 9 三大法人資料"
+    )
