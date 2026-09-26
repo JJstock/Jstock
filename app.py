@@ -3326,16 +3326,68 @@ with tab10:
         # --------------------------------------------------------
     
         triple_col = None
-    
+
         for col in [
             "三率三升",
             "三率三升🔥",
             "三率三升標記",
         ]:
-    
             if col in revenue_df.columns:
                 triple_col = col
                 break
+        
+        if triple_col is not None:
+        
+            def convert_triple(value):
+        
+                if pd.isna(value):
+                    return np.nan
+        
+                # 已經是數字
+                if isinstance(value, (int, float, np.integer, np.floating)):
+                    return float(value)
+        
+                text_value = str(value).strip()
+        
+                # TAB 4 常見「符合」表示
+                if text_value in [
+                    "是",
+                    "Y",
+                    "YES",
+                    "True",
+                    "TRUE",
+                    "1",
+                    "✓",
+                    "✔",
+                    "🔥",
+                    "三率三升",
+                ]:
+                    return 1.0
+        
+                # TAB 4 常見「不符合」表示
+                if text_value in [
+                    "否",
+                    "N",
+                    "NO",
+                    "False",
+                    "FALSE",
+                    "0",
+                    "✗",
+                    "✘",
+                    "",
+                ]:
+                    return 0.0
+        
+                return np.nan
+        
+            revenue_df["triple_rise"] = (
+                revenue_df[triple_col]
+                .apply(convert_triple)
+            )
+        
+        else:
+        
+            revenue_df["triple_rise"] = np.nan
     
         # --------------------------------------------------------
         # 只保留必要欄位
