@@ -3538,10 +3538,10 @@ with tab10:
             .apply(triple_rise_to_score)
         )
 
-        df = df.drop(
-            columns=["_base_code"],
-            errors="ignore"
-        )
+        # 注意：這裡不 drop "_base_code"，
+        # 因為 merge_institutional_data 會沿用同一個
+        # df["_base_code"] 欄位去合併三大法人資料，
+        # 不會自己重新建立一次。
 
         return df
     
