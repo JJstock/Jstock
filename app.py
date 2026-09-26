@@ -3527,25 +3527,200 @@ if force_refresh:
 # ============================================================
 # 12. 股票池
 # ============================================================
+# 優先順序：
+# 1. 使用 TAB 1 已存在的 my_stocks
+# 2. 使用 session_state 裡的股票清單
+# 3. 如果都找不到，再嘗試從常見變數取得
+# ============================================================
+
+stock_items = []
+
+
+# ------------------------------------------------------------
+# 方法 1：TAB 1 的 my_stocks
+# ------------------------------------------------------------
 
 try:
-
-    stock_items = list(
-        my_stocks.items()
-    )
-
+    if "my_stocks" in globals():
+        if isinstance(my_stocks, dict):
+            stock_items = list(my_stocks.items())
 except Exception:
+    pass
 
-    stock_items = []
 
+# ------------------------------------------------------------
+# 方法 2：從 session_state 找股票清單
+# ------------------------------------------------------------
 
 if not stock_items:
 
-    st.warning(
-        "找不到 my_stocks 股票清單，請先確認 TAB 1 的股票清單。"
+    possible_keys = [
+        "my_stocks",
+        "stock_list",
+        "stocks",
+        "watchlist",
+        "stock_watchlist",
+    ]
+
+    for key in possible_keys:
+
+        value = st.session_state.get(
+            key,
+            None
+        )
+
+        if isinstance(value, dict):
+
+            stock_items = list(
+                value.items()
+            )
+
+            break
+
+        elif isinstance(value, list):
+
+            stock_items = []
+
+            for x in value:
+
+                if isinstance(x, str):
+
+                    # 只有代號
+                    stock_items.append(
+                        (
+                            x,
+                            x
+                        )
+                    )
+
+                elif isinstance(x, (list, tuple)):
+
+                    if len(x) >= 2:
+
+                        stock_items.append(
+                            (
+                                x[0],
+                                x[1]
+                            )
+                        )
+
+            if stock_items:
+                break
+
+
+# ------------------------------------------------------------
+# 方法 3：如果 TAB 1 是 DataFrame
+# ------------------------------------------------------------
+
+if not stock_items:
+
+    possible_df_keys = [
+        "stock_df",
+        "watchlist_df",
+        "stocks_df",
+    ]
+
+    for key in possible_df_keys:
+
+        value = st.session_state.get(
+            key,
+            None
+        )
+
+        if isinstance(value, pd.DataFrame):
+
+            temp = value.copy()
+
+            code_col = None
+            name_col = None
+
+            # 找股票代號
+            for c in [
+                "代號",
+                "股票代號",
+                "證券代號",
+                "代碼",
+                "code",
+                "ticker",
+            ]:
+
+                if c in temp.columns:
+                    code_col = c
+                    break
+
+            # 找股票名稱
+            for c in [
+                "名稱",
+                "股票名稱",
+                "證券名稱",
+                "name",
+                "公司名稱",
+            ]:
+
+                if c in temp.columns:
+                    name_col = c
+                    break
+
+            if code_col:
+
+                for _, row in temp.iterrows():
+
+                    code = str(
+                        row[code_col]
+                    ).strip()
+
+                    if not code:
+                        continue
+
+                    if not (
+                        code.endswith(".TW")
+                        or code.endswith(".TWO")
+                    ):
+                        code = code + ".TW"
+
+                    if name_col:
+                        name = str(
+                            row[name_col]
+                        ).strip()
+                    else:
+                        name = code.split(".")[0]
+
+                    stock_items.append(
+                        (
+                            code,
+                            name
+                        )
+                    )
+
+                if stock_items:
+                    break
+
+
+# ------------------------------------------------------------
+# 最後檢查
+# ------------------------------------------------------------
+
+if not stock_items:
+
+    st.error(
+        "❌ TAB 10 找不到 TAB 1 的股票清單。"
+    )
+
+    st.info(
+        "請確認 TAB 1 的股票清單變數，或將 TAB 1 股票清單存入 "
+        "st.session_state。"
     )
 
     st.stop()
+
+
+# ------------------------------------------------------------
+# 顯示股票池
+# ------------------------------------------------------------
+
+st.caption(
+    f"📋 評分股票池：{len(stock_items)} 檔"
+)
 
 
 # ============================================================
