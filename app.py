@@ -4657,7 +4657,7 @@ TAB 10 不會因為評分而重新呼叫 TAB 4 / TAB 9 API。
         f"目前評分股票數：{len(df)} 檔｜"
         f"資料更新：Yahoo cache 1 小時"
     )
-```
+
 
                     tmp_info = yf_obj.info
     
