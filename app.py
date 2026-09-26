@@ -3266,21 +3266,102 @@ with tab10:
     # 6. 合併 TAB 4 營收資料
     # ============================================================
     
+    def triple_rise_to_score(value):
+        """
+        把 TAB 4 的「三率三升」原始文字/符號
+        轉成評分用的 0 / 1。
+
+        跟 merge 進來的 "三率三升" 顯示欄位分開：
+        顯示欄位保留 TAB 4 原始文字（例如 "🔥 三率三升" / "-"），
+        這個函式只負責轉成 0/1 給 calculate_factor_score 用。
+        """
+
+        if pd.isna(value):
+            return np.nan
+
+        if isinstance(value, (int, float, np.integer, np.floating)):
+            return float(value)
+
+        text_value = str(value).strip()
+
+        if text_value in [
+            "🔥 三率三升",
+            "三率三升",
+            "🔥",
+            "是",
+            "Y",
+            "YES",
+            "True",
+            "TRUE",
+            "1",
+            "1.0",
+            "✓",
+            "✔",
+        ]:
+            return 1.0
+
+        if text_value in [
+            "-",
+            "否",
+            "N",
+            "NO",
+            "False",
+            "FALSE",
+            "0",
+            "0.0",
+            "✗",
+            "✘",
+            "",
+        ]:
+            return 0.0
+
+        try:
+            return 1.0 if float(text_value) > 0 else 0.0
+        except Exception:
+            return np.nan
+
+
     def merge_tab4_revenue(df):
-    
+        """
+        直接合併 TAB 4 已經算好的：
+        三率三升（原始文字，例如 "🔥 三率三升" / "-"）
+        月增率(MoM%)
+        年增率(YoY%)
+        累計年增率(%)
+
+        不重新讀 rate.csv，不重新呼叫 API。
+        三率三升的原始文字會保留下來顯示用；
+        另外用 triple_rise_to_score() 轉成 0/1 供評分使用。
+        """
+
+        default_cols = {
+            "三率三升": "-",
+            "月增率(MoM%)": np.nan,
+            "年增率(YoY%)": np.nan,
+            "累計年增率(%)": np.nan,
+        }
+
         revenue_df = get_revenue_data_from_tab4()
-    
+
         if revenue_df.empty:
+
+            for col, value in default_cols.items():
+                if col not in df.columns:
+                    df[col] = value
+
+            if "triple_rise" not in df.columns:
+                df["triple_rise"] = np.nan
+
             return df
-    
+
         revenue_df = revenue_df.copy()
-    
+
         # --------------------------------------------------------
         # 股票代號欄位
         # --------------------------------------------------------
-    
+
         code_col = None
-    
+
         for col in [
             "代號",
             "股票代號",
@@ -3289,251 +3370,179 @@ with tab10:
             "code",
             "Code",
         ]:
-    
+
             if col in revenue_df.columns:
                 code_col = col
                 break
-    
+
         if code_col is None:
+
+            for col, value in default_cols.items():
+                if col not in df.columns:
+                    df[col] = value
+
+            if "triple_rise" not in df.columns:
+                df["triple_rise"] = np.nan
+
             return df
-    
+
         revenue_df["_base_code"] = (
             revenue_df[code_col]
             .astype(str)
             .str.extract(r"(\d{4})")[0]
         )
-    
+
         # --------------------------------------------------------
-        # YoY 欄位
+        # 找出 TAB 4 各欄位的實際欄名
         # --------------------------------------------------------
-    
-        yoy_col = None
-    
-        for col in [
+
+        def find_col(candidates):
+
+            for col in candidates:
+
+                if col in revenue_df.columns:
+                    return col
+
+            return None
+
+        triple_col = find_col([
+            "三率三升",
+            "三率三升🔥",
+            "三率三升標記",
+        ])
+
+        mom_col = find_col([
+            "月增率(MoM%)",
+            "月增率",
+            "MoM%",
+            "MoM",
+        ])
+
+        yoy_col = find_col([
             "年增率(YoY%)",
             "營收年增率",
             "營收年增率(%)",
             "YoY",
             "yoy",
-        ]:
-    
-            if col in revenue_df.columns:
-                yoy_col = col
-                break
-    
-        # --------------------------------------------------------
-        # 三率三升
-        # --------------------------------------------------------
-    
-        triple_col = None
+        ])
 
-        for col in [
-            "三率三升",
-            "三率三升🔥",
-            "三率三升標記",
-        ]:
+        cumulative_col = find_col([
+            "累計年增率(%)",
+            "累計年增率",
+        ])
+
+        # --------------------------------------------------------
+        # 只保留需要的欄位，並統一改成標準欄名
+        # --------------------------------------------------------
+
+        keep_map = {"_base_code": "_base_code"}
+
+        if triple_col:
+            keep_map[triple_col] = "三率三升"
+
+        if mom_col:
+            keep_map[mom_col] = "月增率(MoM%)"
+
+        if yoy_col:
+            keep_map[yoy_col] = "年增率(YoY%)"
+
+        if cumulative_col:
+            keep_map[cumulative_col] = "累計年增率(%)"
+
+        revenue_df = revenue_df[
+            list(keep_map.keys())
+        ].rename(columns=keep_map)
+
+        # --------------------------------------------------------
+        # 數值欄位轉數字
+        # --------------------------------------------------------
+
+        for col in ["月增率(MoM%)", "年增率(YoY%)", "累計年增率(%)"]:
+
             if col in revenue_df.columns:
-                triple_col = col
-                break
-        
-        if triple_col is not None:
-        
-            def convert_triple(value):
-        
-                if pd.isna(value):
-                    return np.nan
-        
-                # 已經是數字
-                if isinstance(value, (int, float, np.integer, np.floating)):
-                    return float(value)
-        
-                text_value = str(value).strip()
-        
-                # TAB 4 常見「符合」表示
-                if text_value in [
-                    "是",
-                    "Y",
-                    "YES",
-                    "True",
-                    "TRUE",
-                    "1",
-                    "✓",
-                    "✔",
-                    "🔥",
-                    "三率三升",
-                ]:
-                    return 1.0
-        
-                # TAB 4 常見「不符合」表示
-                if text_value in [
-                    "否",
-                    "N",
-                    "NO",
-                    "False",
-                    "FALSE",
-                    "0",
-                    "✗",
-                    "✘",
-                    "",
-                ]:
-                    return 0.0
-        
-                return np.nan
-        
-            revenue_df["triple_rise"] = (
-                revenue_df[triple_col]
-                .apply(convert_triple)
-            )
-        
-        else:
-        
-            revenue_df["triple_rise"] = np.nan
-    
+
+                revenue_df[col] = pd.to_numeric(
+                    revenue_df[col],
+                    errors="coerce"
+                )
+
         # --------------------------------------------------------
-        # 只保留必要欄位
+        # 同代號保留第一筆，跟 TAB 4 原本邏輯一致
         # --------------------------------------------------------
-    
-        keep_cols = ["_base_code"]
-    
-        if yoy_col:
-            keep_cols.append(yoy_col)
-    
-        if triple_col:
-            keep_cols.append(triple_col)
-    
-        revenue_df = revenue_df[keep_cols].copy()
-    
-        # --------------------------------------------------------
-        # 數值轉換
-        # --------------------------------------------------------
-    
-        if yoy_col:
-    
-            revenue_df[yoy_col] = pd.to_numeric(
-                revenue_df[yoy_col],
-                errors="coerce"
-            )
-    
-            # TAB 4 假設：
-            # 25 = 25%
-            #
-            # 所以轉成：
-            # 0.25
-            revenue_df["_revenue_growth_tab4"] = (
-                revenue_df[yoy_col] / 100
-            )
-    
-        # --------------------------------------------------------
-        # 三率三升轉數字
-        # --------------------------------------------------------
-    
-        if triple_col:
-    
-            def convert_triple(value):
-    
-                if pd.isna(value):
-                    return np.nan
-    
-                text_value = str(value).strip()
-    
-                if text_value in [
-                    "是",
-                    "Y",
-                    "YES",
-                    "1",
-                    "True",
-                    "TRUE",
-                    "✓",
-                    "✔",
-                    "🔥",
-                ]:
-                    return 1.0
-    
-                if text_value in [
-                    "否",
-                    "N",
-                    "NO",
-                    "0",
-                    "False",
-                    "FALSE",
-                    "✗",
-                    "✘",
-                ]:
-                    return 0.0
-    
-                try:
-                    return float(value)
-                except Exception:
-                    return np.nan
-    
-            revenue_df["_triple_rise"] = (
-                revenue_df[triple_col]
-                .apply(convert_triple)
-            )
-    
-        # --------------------------------------------------------
-        # 去重
-        # --------------------------------------------------------
-    
+
         revenue_df = (
             revenue_df
             .drop_duplicates(
                 subset=["_base_code"],
-                keep="last"
+                keep="first"
             )
         )
-    
+
         # --------------------------------------------------------
         # 股票資料建立 base code
         # --------------------------------------------------------
-    
+
         df["_base_code"] = (
             df["ticker"]
             .astype(str)
             .apply(get_base_ticker)
             .str.extract(r"(\d{4})")[0]
         )
-    
+
         # --------------------------------------------------------
         # 合併
         # --------------------------------------------------------
-    
+
         df = df.merge(
             revenue_df,
             on="_base_code",
             how="left"
         )
-    
+
         # --------------------------------------------------------
-        # TAB 4 優先
+        # 補齊沒抓到的欄位
         # --------------------------------------------------------
-    
-        if "_revenue_growth_tab4" in df.columns:
-    
-            mask = df["_revenue_growth_tab4"].notna()
-    
-            df.loc[
-                mask,
-                "revenue_growth"
-            ] = df.loc[
-                mask,
-                "_revenue_growth_tab4"
-            ]
-    
+
+        for col, value in default_cols.items():
+
+            if col not in df.columns:
+                df[col] = value
+
+        df["三率三升"] = df["三率三升"].fillna("-")
+
         # --------------------------------------------------------
-        # 三率三升
+        # TAB 4 YoY → revenue_growth
+        #
+        # TAB 4：25.3 = 25.3%
+        # TAB 10：0.253
         # --------------------------------------------------------
-    
-        if "_triple_rise" in df.columns:
-    
-            df["triple_rise"] = df[
-                "_triple_rise"
-            ]
-    
-        else:
-    
-            df["triple_rise"] = np.nan
-    
+
+        if "年增率(YoY%)" in df.columns:
+
+            tab4_growth = df["年增率(YoY%)"] / 100
+
+            mask = tab4_growth.notna()
+
+            if "revenue_growth" not in df.columns:
+                df["revenue_growth"] = np.nan
+
+            df.loc[mask, "revenue_growth"] = tab4_growth.loc[mask]
+
+        # --------------------------------------------------------
+        # 三率三升：原始文字保留顯示用，
+        # 另外轉成 0/1 給評分用
+        # --------------------------------------------------------
+
+        df["triple_rise"] = (
+            df["三率三升"]
+            .apply(triple_rise_to_score)
+        )
+
+        df = df.drop(
+            columns=["_base_code"],
+            errors="ignore"
+        )
+
         return df
     
     
@@ -4500,6 +4509,57 @@ with tab10:
         use_container_width=True,
         hide_index=True
     )
+
+
+    # ============================================================
+    # 16.5 TAB 4 營收資料檢查
+    # ============================================================
+
+    with st.expander("📋 TAB 4 營收資料檢查"):
+
+        tab4_check_cols = [
+            "ticker",
+            "name",
+            "三率三升",
+            "月增率(MoM%)",
+            "年增率(YoY%)",
+            "累計年增率(%)",
+        ]
+
+        tab4_check_cols = [
+            c for c in tab4_check_cols if c in df.columns
+        ]
+
+        tab4_display = df[tab4_check_cols].copy()
+
+        tab4_display.columns = [
+            {
+                "ticker": "代號",
+                "name": "名稱",
+                "三率三升": "三率三升",
+                "月增率(MoM%)": "月增率",
+                "年增率(YoY%)": "年增率",
+                "累計年增率(%)": "累計年增率",
+            }[c]
+            for c in tab4_check_cols
+        ]
+
+        st.dataframe(
+            tab4_display,
+            use_container_width=True,
+            hide_index=True,
+            column_config={
+                "月增率": st.column_config.NumberColumn(
+                    "月增率(MoM%)", format="%.2f%%"
+                ),
+                "年增率": st.column_config.NumberColumn(
+                    "年增率(YoY%)", format="%.2f%%"
+                ),
+                "累計年增率": st.column_config.NumberColumn(
+                    "累計年增率(%)", format="%.2f%%"
+                ),
+            }
+        )
     
     
     # ============================================================
@@ -4751,24 +4811,32 @@ with tab10:
     
         with growth_col2:
     
-            triple_value = (
-                stock_row["triple_rise"]
+            # 直接顯示 TAB 4 原始文字（例如 "🔥 三率三升" / "-"）
+            st.write(
+                "三率三升："
+                + str(
+                    stock_row["三率三升"]
+                    if pd.notna(stock_row["三率三升"])
+                    else "—"
+                )
             )
     
-            if pd.isna(triple_value):
-    
-                triple_text = "—"
-    
-            elif triple_value >= 1:
-    
-                triple_text = "✅ 三率三升"
-    
-            else:
-    
-                triple_text = "❌ 非三率三升"
+            st.write(
+                "月增率："
+                + (
+                    f"{stock_row['月增率(MoM%)']:.2f}%"
+                    if pd.notna(stock_row["月增率(MoM%)"])
+                    else "—"
+                )
+            )
     
             st.write(
-                f"三率三升：{triple_text}"
+                "累計年增率："
+                + (
+                    f"{stock_row['累計年增率(%)']:.2f}%"
+                    if pd.notna(stock_row["累計年增率(%)"])
+                    else "—"
+                )
             )
     
     
@@ -5089,6 +5157,9 @@ with tab10:
             "revenue_growth",
             "eps_growth",
             "triple_rise",
+            "三率三升",
+            "月增率(MoM%)",
+            "累計年增率(%)",
     
             "pe",
             "pb",
@@ -5158,6 +5229,9 @@ with tab10:
         "revenue_growth",
         "eps_growth",
         "triple_rise",
+        "三率三升",
+        "月增率(MoM%)",
+        "累計年增率(%)",
     
         "pe",
         "pb",
