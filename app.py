@@ -2499,6 +2499,192 @@ with tab9:
 # TAB 10：台股 100 分多因子評分 V3
 # ============================================================
 # ============================================================
+# TAB 4 → TAB 10
+# 直接使用 TAB 4 已經產生的 revenue_data
+#
+# 使用欄位：
+# 三率三升
+# 月增率(MoM%)
+# 年增率(YoY%)
+# 累計年增率(%)
+# ============================================================
+
+def merge_tab4_revenue_data(df):
+
+    revenue_df = st.session_state.get(
+        "revenue_data"
+    )
+
+    # --------------------------------------------------------
+    # 沒有 TAB 4 資料
+    # --------------------------------------------------------
+
+    if revenue_df is None:
+
+        df["三率三升"] = "-"
+        df["月增率(MoM%)"] = np.nan
+        df["年增率(YoY%)"] = np.nan
+        df["累計年增率(%)"] = np.nan
+
+        return df
+
+    if not isinstance(
+        revenue_df,
+        pd.DataFrame
+    ):
+
+        try:
+
+            revenue_df = pd.DataFrame(
+                revenue_df
+            )
+
+        except Exception:
+
+            df["三率三升"] = "-"
+            df["月增率(MoM%)"] = np.nan
+            df["年增率(YoY%)"] = np.nan
+            df["累計年增率(%)"] = np.nan
+
+            return df
+
+    if revenue_df.empty:
+
+        df["三率三升"] = "-"
+        df["月增率(MoM%)"] = np.nan
+        df["年增率(YoY%)"] = np.nan
+        df["累計年增率(%)"] = np.nan
+
+        return df
+
+    # --------------------------------------------------------
+    # 必須有「代號」
+    # --------------------------------------------------------
+
+    if "代號" not in revenue_df.columns:
+
+        st.warning(
+            "⚠️ TAB 4 revenue_data 找不到「代號」欄位"
+        )
+
+        df["三率三升"] = "-"
+        df["月增率(MoM%)"] = np.nan
+        df["年增率(YoY%)"] = np.nan
+        df["累計年增率(%)"] = np.nan
+
+        return df
+
+    # --------------------------------------------------------
+    # TAB 4 要帶過來的欄位
+    # --------------------------------------------------------
+
+    merge_cols = [
+        "三率三升",
+        "月增率(MoM%)",
+        "年增率(YoY%)",
+        "累計年增率(%)"
+    ]
+
+    existing_merge_cols = [
+        col
+        for col in merge_cols
+        if col in revenue_df.columns
+    ]
+
+    # --------------------------------------------------------
+    # 完全比照 TAB 4：
+    # 代號轉字串後直接比對
+    # --------------------------------------------------------
+
+    left = df.copy()
+
+    left["temp_merge_code"] = (
+        left["ticker"]
+        .astype(str)
+        .str.strip()
+    )
+
+    revenue_merge = revenue_df[
+        ["代號"] + existing_merge_cols
+    ].copy()
+
+    revenue_merge["temp_merge_code"] = (
+        revenue_merge["代號"]
+        .astype(str)
+        .str.strip()
+    )
+
+    # --------------------------------------------------------
+    # 同一代號只保留第一筆
+    # 與 TAB 4 原本邏輯一致
+    # --------------------------------------------------------
+
+    revenue_merge = (
+        revenue_merge
+        .drop_duplicates(
+            subset="temp_merge_code",
+            keep="first"
+        )
+    )
+
+    # --------------------------------------------------------
+    # Merge
+    # --------------------------------------------------------
+
+    if existing_merge_cols:
+
+        left = pd.merge(
+            left,
+            revenue_merge[
+                ["temp_merge_code"]
+                + existing_merge_cols
+            ],
+            on="temp_merge_code",
+            how="left"
+        )
+
+    # --------------------------------------------------------
+    # 清除暫存欄位
+    # --------------------------------------------------------
+
+    left = left.drop(
+        columns=["temp_merge_code"],
+        errors="ignore"
+    )
+
+    # --------------------------------------------------------
+    # 三率三升
+    # TAB 4 已經算好的結果直接拿來用
+    # 不重新計算
+    # --------------------------------------------------------
+
+    if "三率三升" in left.columns:
+
+        left["三率三升"] = (
+            left["三率三升"]
+            .fillna("-")
+        )
+
+    else:
+
+        left["三率三升"] = "-"
+
+    # --------------------------------------------------------
+    # 確保其他 TAB 4 欄位存在
+    # --------------------------------------------------------
+
+    for col in [
+        "月增率(MoM%)",
+        "年增率(YoY%)",
+        "累計年增率(%)"
+    ]:
+
+        if col not in left.columns:
+
+            left[col] = np.nan
+
+    return left
+# ============================================================
 # 1. 評分權重
 # ============================================================
 with tab10:
