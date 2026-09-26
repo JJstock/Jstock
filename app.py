@@ -3325,69 +3325,66 @@ with tab10:
         # 三率三升
         # --------------------------------------------------------
     
-        triple_col = None
+        def merge_tab4_triple_rise(df):
+    """
+    TAB 10 不重新計算三率三升
+    直接使用 TAB 4 已經從 rate.csv 載入的結果
+    """
 
-        for col in [
-            "三率三升",
-            "三率三升🔥",
-            "三率三升標記",
-        ]:
-            if col in revenue_df.columns:
-                triple_col = col
-                break
-        
-        if triple_col is not None:
-        
-            def convert_triple(value):
-        
-                if pd.isna(value):
-                    return np.nan
-        
-                # 已經是數字
-                if isinstance(value, (int, float, np.integer, np.floating)):
-                    return float(value)
-        
-                text_value = str(value).strip()
-        
-                # TAB 4 常見「符合」表示
-                if text_value in [
-                    "是",
-                    "Y",
-                    "YES",
-                    "True",
-                    "TRUE",
-                    "1",
-                    "✓",
-                    "✔",
-                    "🔥",
-                    "三率三升",
-                ]:
-                    return 1.0
-        
-                # TAB 4 常見「不符合」表示
-                if text_value in [
-                    "否",
-                    "N",
-                    "NO",
-                    "False",
-                    "FALSE",
-                    "0",
-                    "✗",
-                    "✘",
-                    "",
-                ]:
-                    return 0.0
-        
-                return np.nan
-        
-            revenue_df["triple_rise"] = (
-                revenue_df[triple_col]
-                .apply(convert_triple)
-            )
-        
-        else:
-        
-            revenue_df["triple_rise"] = np.nan
+        revenue_df = st.session_state.get("revenue_data")
+    
+        # 沒有 TAB 4 資料
+        if revenue_df is None or revenue_df.empty:
+            df["三率三升"] = "-"
+            return df
+    
+        # TAB 4 必須有代號
+        if "代號" not in revenue_df.columns:
+            df["三率三升"] = "-"
+            return df
+    
+        # TAB 4 必須已經有三率三升
+        if "三率三升" not in revenue_df.columns:
+            df["三率三升"] = "-"
+            return df
+    
+        left = df.copy()
+        right = revenue_df[["代號", "三率三升"]].copy()
+    
+        # 股票代號統一格式
+        left["_merge_code"] = (
+            left["ticker"]
+            .astype(str)
+            .str.strip()
+            .str.replace(r"\.(TW|TWO)$", "", regex=True)
+        )
+    
+        right["_merge_code"] = (
+            right["代號"]
+            .astype(str)
+            .str.strip()
+            .str.replace(r"\.(TW|TWO)$", "", regex=True)
+        )
+    
+        # 同一股票只保留第一筆
+        right = right.drop_duplicates(
+            subset="_merge_code",
+            keep="first"
+        )
+    
+        # 合併 TAB 4 的三率三升
+        left = pd.merge(
+            left,
+            right[["_merge_code", "三率三升"]],
+            on="_merge_code",
+            how="left"
+        )
+    
+        left["三率三升"] = left["三率三升"].fillna("-")
+    
+        left = left.drop(columns=["_merge_code"])
+    
+        return left
     
         # --------------------------------------------------------
         # 只保留必要欄位
