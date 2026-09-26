@@ -3235,7 +3235,7 @@ with tab10:
     # 直接使用 TAB 4 已經抓好的資料
     # 不重新呼叫 API
     # ============================================================
-        def get_revenue_data_from_tab4():
+    def get_revenue_data_from_tab4():
     
         possible_keys = [
             "revenue_data",
