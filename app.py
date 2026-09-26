@@ -453,8 +453,7 @@ if "my_stocks" not in st.session_state:
         "3037.TW": "欣興",
     }
     
-# ⭐ 關鍵：讓其他 TAB 都可以使用
-st.session_state["my_stocks"] = my_stocks.copy()
+
 
 # 側邊欄：新增與刪除監控股票
 @st.cache_data
@@ -566,7 +565,8 @@ with st.sidebar:
 
     if "last_cache_clear" in st.session_state:
         st.caption(f"上次清除快取：{st.session_state['last_cache_clear']} (台灣時間UTC+8)")
-
+# ⭐ 關鍵：讓其他 TAB 都可以使用
+st.session_state["my_stocks"] = my_stocks.copy()
 # --- TAB 1: 主監控頁面 ---
 with tab1:
     st.subheader("📋 監控清單總覽")
