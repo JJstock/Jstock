@@ -3325,11 +3325,7 @@ with tab10:
         # --------------------------------------------------------
     
         def merge_tab4_triple_rise(df):
-    """
-    TAB 10 不重新計算三率三升
-    直接使用 TAB 4 已經從 rate.csv 載入的結果
-    """
-
+   
         revenue_df = st.session_state.get("revenue_data")
     
         # 沒有 TAB 4 資料
