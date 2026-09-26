@@ -2583,7 +2583,60 @@ SCORE_WEIGHTS = {
         "max_drawdown": 2,
     },
 }
+# ============================================================
+# 1.2絕對評分
+# ============================================================
 
+def absolute_score(
+    series,
+    min_value,
+    max_value,
+    higher_is_better=True
+):
+    """
+    絕對評分
+    回傳 0~1
+
+    higher_is_better=True
+        數值越高越好
+
+    higher_is_better=False
+        數值越低越好
+    """
+
+    s = pd.to_numeric(
+        series,
+        errors="coerce"
+    )
+
+    result = pd.Series(
+        np.nan,
+        index=s.index,
+        dtype=float
+    )
+
+    valid = s.notna()
+
+    if max_value <= min_value:
+        return result
+
+    if higher_is_better:
+
+        result.loc[valid] = (
+            (s.loc[valid] - min_value)
+            / (max_value - min_value)
+        )
+
+    else:
+
+        result.loc[valid] = (
+            (max_value - s.loc[valid])
+            / (max_value - min_value)
+        )
+
+    result = result.clip(0, 1)
+
+    return result
 
 # ============================================================
 # 2. 工具函式
