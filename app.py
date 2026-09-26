@@ -4659,7 +4659,7 @@ TAB 10 不會因為評分而重新呼叫 TAB 4 / TAB 9 API。
     )
 
 
-                    tmp_info = yf_obj.info
+                tmp_info = yf_obj.info
     
                     if isinstance(tmp_info, dict):
                         info = tmp_info
