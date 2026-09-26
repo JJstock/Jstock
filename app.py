@@ -452,6 +452,7 @@ if "my_stocks" not in st.session_state:
         "2303.TW": "聯電",              
         "3037.TW": "欣興",
         "1303.TW": "南亞",
+        "3017.TW": "奇鋐",
     }
     
 
