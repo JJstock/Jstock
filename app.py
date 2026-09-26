@@ -2496,47 +2496,25 @@ with tab9:
         )
 
 # ============================================================
-# TAB 10：台股 100 分多因子評分 V4
+# TAB 10：台股 100 分多因子評分 V4（修正版）
 # 核心：絕對評分 50% + 相對排名 50%
+# 修正紀錄：
+#   1. 刪除檔案開頭的殘留/錯位程式碼（原本在函式與 df 定義前
+#      就呼叫 calculate_factor_score，會直接 NameError）
+#   2. 修正多處縮排錯誤（growth_weights / valuation_weights /
+#      chip_weights / risk_weights / 獲利能力詳細拆解 expander）
+#   3. 評價因子欄位改為 "pe"（原本用 "forward_pe"，
+#      但資料欄位其實叫 "pe"，導致評價分數永遠是 NaN）
+#   4. 籌碼面因子欄位改為 "foreign" / "trust" / "dealer"
+#      （原本用 *_net 字尾，資料欄位沒有這個字尾）
+#   5. required_numeric_cols 同步修正欄位名稱
+#   6. 修正「獲利能力詳細拆解」迴圈覆蓋 row 變數的 bug
+#      （改用 r，避免後面成長性/評價/技術面等 expander
+#      顯示成最後一列股票的資料）
+#   7. 刪除重複計算的第一次排名（原本用 rank() 算一次，
+#      後面 sort_values 又算一次並覆蓋掉，保留後者）
+#   8. 說明文字改為 eps 版權重（ROE8 / ROA5 / 營業利益率6 / EPS6）
 # ============================================================
-
-profit_weights = SCORE_WEIGHTS["獲利能力"]
-
-df = calculate_factor_score(
-    df,
-    "獲利能力",
-    profit_weights["total"],
-    {
-        "roe": profit_weights["roe"],
-        "roa": profit_weights["roa"],
-        "operating_margin": profit_weights["operating_margin"],
-        "net_margin": profit_weights["net_margin"],
-    },
-    {
-        "roe": True,
-        "roa": True,
-        "operating_margin": True,
-        "net_margin": True,
-    },
-
-    # ========================================================
-    # Yahoo Finance 是「小數」
-    #
-    # 0.30 = 30%
-    #
-    # 超過上限 → 絕對分直接 100%
-    # ========================================================
-
-    absolute_ranges={
-        "roe": (0.00, 0.30),
-        "roa": (0.00, 0.15),
-        "operating_margin": (0.00, 0.30),
-        "net_margin": (0.00, 0.30),
-    },
-
-    absolute_weight=0.5,
-    relative_weight=0.5,
-)
 
 # ============================================================
 # 2. 工具函式
@@ -2959,23 +2937,23 @@ def get_score_stock_data(ticker):
     # ========================================================
 
     roe = safe_float(
-    info.get("returnOnEquity")
+        info.get("returnOnEquity")
     )
-    
+
     roa = safe_float(
         info.get("returnOnAssets")
     )
-    
+
     operating_margin = safe_float(
         info.get("operatingMargins")
     )
-    
+
     # Yahoo Finance profitMargins：
     # 例如 0.45 = 45%
     net_margin = safe_float(
         info.get("profitMargins")
     )
-    
+
     eps = safe_float(
         info.get("trailingEps")
     )
@@ -4125,31 +4103,34 @@ with tab10:
 
     # ========================================================
     # 確保必要欄位
+    #
+    # 修正：欄位名稱對齊實際資料
+    #   trailing_pe / forward_pe → pe
+    #   foreign_net / trust_net / dealer_net → foreign / trust / dealer
     # ========================================================
 
     required_numeric_cols = [
-    "roe",
-    "roa",
-    "operating_margin",
-    "net_margin",
-    "eps",
+        "roe",
+        "roa",
+        "operating_margin",
+        "net_margin",
+        "eps",
 
-    "revenue_growth",
-    "eps_growth",
+        "revenue_growth",
+        "eps_growth",
 
-    "trailing_pe",
-    "forward_pe",
-    "pb",
-    "peg",
+        "pe",
+        "pb",
+        "peg",
 
-    "foreign_net",
-    "trust_net",
-    "dealer_net",
+        "foreign",
+        "trust",
+        "dealer",
 
-    "vol_3m",
-    "vol_6m",
-    "vol_1y",
-    "max_drawdown",
+        "vol_3m",
+        "vol_6m",
+        "vol_1y",
+        "max_drawdown",
     ]
 
     for col in required_numeric_cols:
@@ -4305,7 +4286,7 @@ with tab10:
     # ========================================================
 
     # --------------------------------------------------------
-    # 獲利能力
+    # 獲利能力（eps 版：ROE 8 / ROA 5 / 營業利益率 6 / EPS 6）
     # --------------------------------------------------------
 
     df = calculate_factor_score(
@@ -4328,15 +4309,24 @@ with tab10:
             "roa": True,
             "operating_margin": True,
             "eps": True
-        }
+        },
+
+        absolute_ranges={
+            "roe": (0.00, 0.30),
+            "roa": (0.00, 0.15),
+            "operating_margin": (0.00, 0.30),
+        },
+
+        absolute_weight=0.5,
+        relative_weight=0.5,
     )
 
     # --------------------------------------------------------
     # 成長性
     # --------------------------------------------------------
 
-       growth_weights = SCORE_WEIGHTS["成長性"]
-    
+    growth_weights = SCORE_WEIGHTS["成長性"]
+
     df = calculate_factor_score(
         df,
         "成長性",
@@ -4355,21 +4345,22 @@ with tab10:
     # 評價
     #
     # PE / PB / PEG 越低越好
+    # 修正：forward_pe → pe（對齊實際資料欄位）
     # --------------------------------------------------------
 
-        valuation_weights = SCORE_WEIGHTS["評價"]
-    
+    valuation_weights = SCORE_WEIGHTS["評價"]
+
     df = calculate_factor_score(
         df,
         "評價",
         valuation_weights["total"],
         {
-            "forward_pe": valuation_weights["forward_pe"],
+            "pe": valuation_weights["forward_pe"],
             "pb": valuation_weights["pb"],
             "peg": valuation_weights["peg"],
         },
         {
-            "forward_pe": False,
+            "pe": False,
             "pb": False,
             "peg": False,
         }
@@ -4380,7 +4371,7 @@ with tab10:
     # --------------------------------------------------------
 
     technical_weights = SCORE_WEIGHTS["技術面"]
-    
+
     df = calculate_factor_score(
         df,
         "技術面",
@@ -4400,25 +4391,27 @@ with tab10:
             "triple_rise": True,
         }
     )
+
     # --------------------------------------------------------
     # 籌碼面
+    # 修正：foreign_net/trust_net/dealer_net → foreign/trust/dealer
     # --------------------------------------------------------
 
-        chip_weights = SCORE_WEIGHTS["籌碼面"]
-    
+    chip_weights = SCORE_WEIGHTS["籌碼面"]
+
     df = calculate_factor_score(
         df,
         "籌碼面",
         chip_weights["total"],
         {
-            "foreign_net": chip_weights["foreign_net"],
-            "trust_net": chip_weights["trust_net"],
-            "dealer_net": chip_weights["dealer_net"],
+            "foreign": chip_weights["foreign_net"],
+            "trust": chip_weights["trust_net"],
+            "dealer": chip_weights["dealer_net"],
         },
         {
-            "foreign_net": True,
-            "trust_net": True,
-            "dealer_net": True,
+            "foreign": True,
+            "trust": True,
+            "dealer": True,
         }
     )
 
@@ -4431,8 +4424,8 @@ with tab10:
     # 所以越高越好
     # --------------------------------------------------------
 
-        risk_weights = SCORE_WEIGHTS["低波風險"]
-    
+    risk_weights = SCORE_WEIGHTS["低波風險"]
+
     df = calculate_factor_score(
         df,
         "低波風險",
@@ -4447,7 +4440,7 @@ with tab10:
             "vol_3m": False,
             "vol_6m": False,
             "vol_1y": False,
-    
+
             # 例如：
             # -10% > -30%
             # 因此越大越好
@@ -4458,7 +4451,7 @@ with tab10:
     # ============================================================
     # 100 分總分
     # ============================================================
-    
+
     factor_score_cols = [
         "獲利能力得分",
         "成長性得分",
@@ -4467,30 +4460,13 @@ with tab10:
         "籌碼面得分",
         "低波風險得分",
     ]
-    
+
     df["總分"] = df[
         factor_score_cols
     ].sum(axis=1, min_count=1)
-    
+
     # 避免因為極端資料造成超過 100
     df["總分"] = df["總分"].clip(0, 100)
-    
-    # ============================================================
-    # 排名
-    # ============================================================
-    
-    df["排名"] = (
-        df["總分"]
-        .rank(
-            ascending=False,
-            method="min"
-        )
-    )
-    
-    df["排名"] = (
-        df["排名"]
-        .astype("Int64")
-    )
 
     # ========================================================
     # 13. 資料完整度
@@ -4513,6 +4489,10 @@ with tab10:
 
     # ========================================================
     # 14. 排名
+    #
+    # 修正：原本前面已用 rank() 算過一次排名，
+    # 這裡又用 sort_values 重算並覆蓋，等於白算一次，
+    # 故只保留這一版（依總分 → 資料完整度排序）
     # ========================================================
 
     df = df.sort_values(
@@ -4856,137 +4836,141 @@ with tab10:
 
     with st.expander("📈 獲利能力詳細拆解"):
 
-    st.markdown(
-        """
-        **獲利能力 25 分**
+        st.markdown(
+            """
+            **獲利能力 25 分**
 
-        - ROE：8 分
-        - ROA：5 分
-        - 營業利益率：7 分
-        - 淨利率：5 分
+            - ROE：8 分
+            - ROA：5 分
+            - 營業利益率：6 分
+            - EPS：6 分
 
-        每個指標：
-        **絕對評分 50% + 相對排名 50%**
-        """
-    )
+            每個指標：
+            **絕對評分 50% + 相對排名 50%**
+            """
+        )
 
-    if len(df) > 0:
+        if len(df) > 0:
 
-        detail_rows = []
+            detail_rows = []
 
-        for _, row in df.iterrows():
+            # 修正：這裡原本用 row 當迴圈變數，
+            # 會把上面選定股票的 row 覆蓋掉，
+            # 導致後面成長性/評價/技術面等 expander
+            # 顯示成最後一列股票的資料。改用 r。
+            for _, r in df.iterrows():
 
-            ticker = row.get(
-                "代號",
-                row.get("ticker", "")
-            )
-
-            name = row.get(
-                "名稱",
-                row.get("name", "")
-            )
-
-            metrics = [
-                ("ROE", "roe", 8),
-                ("ROA", "roa", 5),
-                ("營業利益率", "operating_margin", 7),
-                ("淨利率", "net_margin", 5),
-            ]
-
-            for display_name, key, weight in metrics:
-
-                actual = row.get(key, np.nan)
-
-                absolute = row.get(
-                    f"_absolute_獲利能力_{key}",
-                    np.nan
+                ticker = r.get(
+                    "代號",
+                    r.get("ticker", "")
                 )
 
-                relative = row.get(
-                    f"_relative_獲利能力_{key}",
-                    np.nan
+                name = r.get(
+                    "名稱",
+                    r.get("name", "")
                 )
 
-                combined = row.get(
-                    f"_score_獲利能力_{key}",
-                    np.nan
-                )
+                metrics = [
+                    ("ROE", "roe", 8),
+                    ("ROA", "roa", 5),
+                    ("營業利益率", "operating_margin", 6),
+                    ("EPS", "eps", 6),
+                ]
 
-                if pd.notna(actual):
+                for display_name, key, weight in metrics:
 
-                    detail_rows.append({
-                        "代號": ticker,
-                        "名稱": name,
-                        "指標": display_name,
-                        "實際值": actual,
-                        "絕對分數": (
-                            absolute * 100
-                            if pd.notna(absolute)
-                            else np.nan
-                        ),
-                        "相對排名": (
-                            relative * 100
-                            if pd.notna(relative)
-                            else np.nan
-                        ),
-                        "綜合分數": (
-                            combined * 100
-                            if pd.notna(combined)
-                            else np.nan
-                        ),
-                        "權重": weight,
-                        "加權得分": (
-                            combined * weight
-                            if pd.notna(combined)
-                            else np.nan
-                        ),
-                    })
+                    actual = r.get(key, np.nan)
 
-        if detail_rows:
-
-            detail_df = pd.DataFrame(
-                detail_rows
-            )
-
-            # 百分比顯示
-            detail_display = detail_df.copy()
-
-            for col in [
-                "實際值",
-                "絕對分數",
-                "相對排名",
-                "綜合分數",
-            ]:
-                if col == "實際值":
-                    detail_display[col] = (
-                        detail_display[col] * 100
-                    ).round(2).astype(str) + "%"
-
-                else:
-                    detail_display[col] = (
-                        detail_display[col]
-                        .round(2)
-                        .astype(str)
-                        + "分"
+                    absolute = r.get(
+                        f"_absolute_獲利能力_{key}",
+                        np.nan
                     )
 
-            detail_display["權重"] = (
-                detail_display["權重"]
-                .astype(str)
-                + "分"
-            )
+                    relative = r.get(
+                        f"_relative_獲利能力_{key}",
+                        np.nan
+                    )
 
-            detail_display["加權得分"] = (
-                detail_display["加權得分"]
-                .round(2)
-                .astype(str)
-            )
+                    combined = r.get(
+                        f"_score_獲利能力_{key}",
+                        np.nan
+                    )
 
-            st.dataframe(
-                detail_display,
-                use_container_width=True,
-                hide_index=True
-            )
+                    if pd.notna(actual):
+
+                        detail_rows.append({
+                            "代號": ticker,
+                            "名稱": name,
+                            "指標": display_name,
+                            "實際值": actual,
+                            "絕對分數": (
+                                absolute * 100
+                                if pd.notna(absolute)
+                                else np.nan
+                            ),
+                            "相對排名": (
+                                relative * 100
+                                if pd.notna(relative)
+                                else np.nan
+                            ),
+                            "綜合分數": (
+                                combined * 100
+                                if pd.notna(combined)
+                                else np.nan
+                            ),
+                            "權重": weight,
+                            "加權得分": (
+                                combined * weight
+                                if pd.notna(combined)
+                                else np.nan
+                            ),
+                        })
+
+            if detail_rows:
+
+                detail_df = pd.DataFrame(
+                    detail_rows
+                )
+
+                # 百分比顯示
+                detail_display = detail_df.copy()
+
+                for col in [
+                    "實際值",
+                    "絕對分數",
+                    "相對排名",
+                    "綜合分數",
+                ]:
+                    if col == "實際值":
+                        detail_display[col] = (
+                            detail_display[col] * 100
+                        ).round(2).astype(str) + "%"
+
+                    else:
+                        detail_display[col] = (
+                            detail_display[col]
+                            .round(2)
+                            .astype(str)
+                            + "分"
+                        )
+
+                detail_display["權重"] = (
+                    detail_display["權重"]
+                    .astype(str)
+                    + "分"
+                )
+
+                detail_display["加權得分"] = (
+                    detail_display["加權得分"]
+                    .round(2)
+                    .astype(str)
+                )
+
+                st.dataframe(
+                    detail_display,
+                    use_container_width=True,
+                    hide_index=True
+                )
 
     # ========================================================
     # 成長性
@@ -5349,8 +5333,8 @@ with tab10:
     #### 獲利能力 25 分
     - ROE：8
     - ROA：5
-    - 營業利益率：7
-    - 淨利率：5
+    - 營業利益率：6
+    - EPS：6
 
     #### 獲利評分方式
     - 絕對評分：50%
@@ -5358,38 +5342,40 @@ with tab10:
     - 超過合理門檻的優質獲利能力不會因為同批股票很強而被過度壓低
     """
 )
-display_cols = [
-    "排名",
-    "代號",
-    "名稱",
-    "總分",
-    "獲利能力得分",
-    "成長性得分",
-    "評價得分",
-    "技術面得分",
-    "籌碼面得分",
-    "低波風險得分",
-]
-show_df = df[
-    [c for c in display_cols if c in df.columns]
-].copy()
 
-score_cols = [
-    "總分",
-    "獲利能力得分",
-    "成長性得分",
-    "評價得分",
-    "技術面得分",
-    "籌碼面得分",
-    "低波風險得分",
-]
+    display_cols = [
+        "排名",
+        "代號",
+        "名稱",
+        "總分",
+        "獲利能力得分",
+        "成長性得分",
+        "評價得分",
+        "技術面得分",
+        "籌碼面得分",
+        "低波風險得分",
+    ]
 
-for col in score_cols:
-    if col in show_df.columns:
-        show_df[col] = show_df[col].round(2)
+    show_df = df[
+        [c for c in display_cols if c in df.columns]
+    ].copy()
 
-st.dataframe(
-    show_df,
-    use_container_width=True,
-    hide_index=True
-)
+    score_cols = [
+        "總分",
+        "獲利能力得分",
+        "成長性得分",
+        "評價得分",
+        "技術面得分",
+        "籌碼面得分",
+        "低波風險得分",
+    ]
+
+    for col in score_cols:
+        if col in show_df.columns:
+            show_df[col] = show_df[col].round(2)
+
+    st.dataframe(
+        show_df,
+        use_container_width=True,
+        hide_index=True
+    )
