@@ -4665,9 +4665,9 @@ with tab10:
     
     
     # ============================================================
-    # 19. 六大因子圖
+    # 19. 六大因子雷達圖（六邊形）
     # ============================================================
-    
+
     factor_names = [
         "獲利能力得分",
         "成長性得分",
@@ -4676,8 +4676,7 @@ with tab10:
         "籌碼面得分",
         "低波風險得分",
     ]
-    
-    
+
     factor_display_names = [
         "獲利能力",
         "成長性",
@@ -4686,51 +4685,119 @@ with tab10:
         "籌碼面",
         "低波風險",
     ]
-    
-    
-    factor_values = []
-    
-    
-    for col in factor_names:
-    
+
+    factor_max_scores = [
+        SCORE_WEIGHTS[name]["total"]
+        for name in factor_display_names
+    ]
+
+    # 得分率（0~100%），讓不同滿分的因子可以公平比較
+    factor_rates = []
+    factor_raw_scores = []
+
+    for col, max_score in zip(factor_names, factor_max_scores):
+
         value = stock_row[col]
-    
+
         if pd.isna(value):
-            value = 0
-    
-        factor_values.append(value)
-    
-    
+            factor_raw_scores.append(None)
+            factor_rates.append(0)
+        else:
+            factor_raw_scores.append(value)
+            factor_rates.append(value / max_score * 100)
+
+    # 雷達圖要頭尾相接才會封閉成六邊形
+    theta = factor_display_names + [factor_display_names[0]]
+    r_values = factor_rates + [factor_rates[0]]
+
+    # hover 顯示「實際得分 / 滿分」
+    hover_text = []
+
+    for name, raw, max_score, rate in zip(
+        factor_display_names,
+        factor_raw_scores,
+        factor_max_scores,
+        factor_rates,
+    ):
+        if raw is None:
+            hover_text.append(f"{name}：無資料")
+        else:
+            hover_text.append(
+                f"{name}：{raw:.1f} / {max_score}（{rate:.0f}%）"
+            )
+
+    hover_text.append(hover_text[0])
+
+    # 標籤顯示在頂點旁邊：例如 "獲利能力\n18.5/25"
+    label_theta = [
+        f"{name}<br>"
+        + (f"{raw:.1f}/{max_score}" if raw is not None else "—")
+        for name, raw, max_score in zip(
+            factor_display_names,
+            factor_raw_scores,
+            factor_max_scores,
+        )
+    ]
+
     fig = go.Figure()
-    
-    
+
+    # 外框參考線（100%）
     fig.add_trace(
-        go.Bar(
-            x=factor_display_names,
-            y=factor_values,
-            text=[
-                f"{v:.1f}"
-                for v in factor_values
-            ],
-            textposition="auto",
+        go.Scatterpolar(
+            r=[100] * (len(factor_display_names) + 1),
+            theta=theta,
+            mode="lines",
+            line=dict(color="lightgray", dash="dot"),
+            hoverinfo="skip",
+            showlegend=False,
         )
     )
-    
-    
+
+    # 個股得分率
+    fig.add_trace(
+        go.Scatterpolar(
+            r=r_values,
+            theta=theta,
+            fill="toself",
+            name=f"{selected_ticker}",
+            text=hover_text,
+            hoverinfo="text",
+            line=dict(width=3),
+            marker=dict(size=7),
+        )
+    )
+
     fig.update_layout(
         title=(
             f"{selected_ticker} "
-            f"{stock_row['name']}｜六大因子"
+            f"{stock_row['name']}｜六大因子雷達圖"
         ),
-        yaxis_title="得分",
-        yaxis_range=[0, 25],
-        height=400,
+        polar=dict(
+            radialaxis=dict(
+                visible=True,
+                range=[0, 100],
+                ticksuffix="%",
+                tickvals=[20, 40, 60, 80, 100],
+            ),
+            angularaxis=dict(
+                tickmode="array",
+                tickvals=factor_display_names,
+                ticktext=label_theta,
+            ),
+        ),
+        showlegend=False,
+        height=480,
     )
-    
-    
+
     st.plotly_chart(
         fig,
         use_container_width=True
+    )
+
+    st.caption(
+        "雷達圖軸為「得分率」＝因子得分 ÷ 該因子滿分，"
+        "滑鼠移到點上可看實際得分。"
+        "無資料的因子以 0% 顯示。"
     )
     
     
