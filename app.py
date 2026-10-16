@@ -959,7 +959,7 @@ with tab3:
 # --- TAB 4: 月營收監控 ---
 with tab4:
     st.write("### 📊 上市櫃營收強勢成長股清單")
-    st.caption(f"營收資料月份：2026.09 /2026.10.14更新")
+    st.caption(f"營收資料月份：2026.09 /2026.10.16更新")
     if "revenue_data" in st.session_state and not st.session_state.revenue_data.empty:
         df = st.session_state.revenue_data
         
