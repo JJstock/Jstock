@@ -13,8 +13,8 @@ import streamlit as st
 import yfinance as yf
 import os
 
-st.set_page_config(page_title="Jstok股價監控", layout="wide")
-st.title("JStok 📊 MA20+60 與財報監控")
+st.set_page_config(page_title="Jstock股價監控", layout="wide")
+st.title("JStock 📊 MA20+60 與財報監控")
 
 #讀取營收及三率三升
 def read_twse_csv_from_bytes(content_bytes):
